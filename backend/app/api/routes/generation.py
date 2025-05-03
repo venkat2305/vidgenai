@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Query
 from app.db.mongodb import mongodb
 from app.db.models.video import VideoCreate, VideoModel, VideoStatus
 from app.services.script.script_generator import generate_script
@@ -9,6 +9,7 @@ from app.services.video.composer import compose_video
 from app.services.s3.storage import upload_to_s3
 import logging
 from datetime import datetime
+from typing import Optional
 
 router = APIRouter()
 logger = logging.getLogger("vidgenai.generation")
@@ -38,7 +39,7 @@ async def update_video_status(video_id: str, status: VideoStatus, progress: int 
     )
 
 
-async def generate_video_background(video_id: str):
+async def generate_video_background(video_id: str, aspect_ratio: str = "9:16"):
     """Background task to generate a video."""
     try:
         videos_collection = mongodb.db.videos
@@ -53,9 +54,11 @@ async def generate_video_background(video_id: str):
         script = await generate_script(video["celebrity_name"])
         await update_video_status(video_id, VideoStatus.GENERATING_SCRIPT, 20, script=script)
 
-        # 2. Fetch images
+        # 2. Fetch images with metadata for the specified aspect ratio
         await update_video_status(video_id, VideoStatus.FETCHING_IMAGES, 30)
-        image_urls = await fetch_images(video["celebrity_name"], script)
+        image_data = await fetch_images(video["celebrity_name"], script, aspect_ratio=aspect_ratio)
+        # Extract just the URLs for database storage
+        image_urls = [img["url"] for img in image_data]
         await update_video_status(video_id, VideoStatus.FETCHING_IMAGES, 40, image_urls=image_urls)
 
         # 3. Generate audio
@@ -92,10 +95,10 @@ async def generate_video_background(video_id: str):
         subtitle_path = await generate_subtitles(script, audio_path)
         subtitle_url = await upload_to_s3(subtitle_path, f"{video_id}.srt")
 
-        # 5. Compose video
+        # 5. Compose video with the specified aspect ratio
         await update_video_status(video_id, VideoStatus.COMPOSING_VIDEO, 80)
         video_path, thumbnail_path, duration = await compose_video(
-            script, image_urls, audio_path, subtitle_path
+            script, image_data, audio_path, subtitle_path, video_aspect=aspect_ratio
         )
 
         # 6. Upload to S3
@@ -123,10 +126,16 @@ async def generate_video_background(video_id: str):
 @router.post("/", response_model=VideoModel)
 async def create_video_generation(
     video_data: VideoCreate,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    aspect_ratio: str = Query("9:16", description="Video aspect ratio (9:16, 16:9, 1:1)")
 ):
     """
     Start the generation of a new video.
+    
+    Args:
+        video_data: Video creation data
+        background_tasks: FastAPI background tasks
+        aspect_ratio: Desired aspect ratio for the video (default: 9:16 for short-form vertical video)
     """
     # Create a new video document
     video = VideoModel(
@@ -139,8 +148,8 @@ async def create_video_generation(
     videos_collection = mongodb.db.videos
     await videos_collection.insert_one(video.dict())
 
-    # Start background task
-    background_tasks.add_task(generate_video_background, video.id)
+    # Start background task with aspect ratio
+    background_tasks.add_task(generate_video_background, video.id, aspect_ratio)
 
     return video
 
