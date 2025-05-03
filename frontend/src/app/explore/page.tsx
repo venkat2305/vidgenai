@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Play, Volume2, VolumeX, ExternalLink } from "lucide-react";
@@ -16,8 +16,10 @@ export default function ExplorePage() {
   const [mutedVideos, setMutedVideos] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<Record<string, boolean>>({});
+  const [activeReelId, setActiveReelId] = useState<string | null>(null);
   const [skip, setSkip] = useState(0);
   const LIMIT = 10;
+  const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
 
   useEffect(() => {
     // Fetch videos when component mounts
@@ -33,10 +35,10 @@ export default function ExplorePage() {
       });
       setReels(videos);
       
-      // Initialize all videos as muted
+      // Initialize all videos as unmuted by default
       const initialMutedState: Record<string, boolean> = {};
       videos.forEach(video => {
-        initialMutedState[video.id] = true;
+        initialMutedState[video.id] = false;
       });
       setMutedVideos(initialMutedState);
       
@@ -65,10 +67,10 @@ export default function ExplorePage() {
         return;
       }
       
-      // Initialize new videos as muted
+      // Initialize new videos as unmuted by default
       const newMutedState = {...mutedVideos};
       videos.forEach(video => {
-        newMutedState[video.id] = true;
+        newMutedState[video.id] = false;
       });
       setMutedVideos(newMutedState);
       
@@ -81,6 +83,19 @@ export default function ExplorePage() {
   };
 
   const togglePlay = (reelId: string) => {
+    // If turning on this video
+    if (!playing[reelId]) {
+      // Set this as active reel
+      setActiveReelId(reelId);
+      
+      // Pause all other videos
+      Object.keys(playing).forEach((id) => {
+        if (id !== reelId && playing[id]) {
+          pauseVideo(id);
+        }
+      });
+    }
+    
     setPlaying((prev) => ({
       ...prev,
       [reelId]: !prev[reelId],
@@ -105,31 +120,85 @@ export default function ExplorePage() {
     }
   };
 
+  // Play the video for a specific reel
+  const playVideo = (reelId: string) => {
+    const videoElement = videoRefs.current[reelId];
+    if (videoElement) {
+      // First set playing state
+      setPlaying(prev => ({ ...prev, [reelId]: true }));
+      
+      // Try to play with sound (works if user interacted with the page)
+      const playPromise = videoElement.play();
+      
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          // Auto-play with sound was prevented by browser
+          console.warn('Autoplay with sound prevented:', error);
+          
+          // If autoplay with sound fails, try again muted and then unmute
+          if (!mutedVideos[reelId]) {
+            // Temporarily mute the video
+            videoElement.muted = true;
+            
+            // Try to play muted
+            videoElement.play()
+              .then(() => {
+                // Check if user has interacted with the page, then unmute
+                const userInteracted = document.documentElement.hasAttribute('data-user-interacted');
+                if (userInteracted) {
+                  videoElement.muted = false;
+                }
+              })
+              .catch(err => console.error('Even muted autoplay failed:', err));
+          }
+        });
+      }
+    }
+  };
+
+  // Pause the video for a specific reel
+  const pauseVideo = (reelId: string) => {
+    const videoElement = videoRefs.current[reelId];
+    if (videoElement) {
+      videoElement.pause();
+      setPlaying(prev => ({ ...prev, [reelId]: false }));
+    }
+  };
+
   // Intersection Observer to autoplay videos when in view
   useEffect(() => {
+    if (reels.length === 0) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           const reelId = entry.target.id;
+          
           if (entry.isIntersecting) {
-            setPlaying((prev) => ({
-              ...prev,
-              [reelId]: true,
-            }));
-            
-            // Pause other videos
-            Object.keys(playing).forEach((id) => {
-              if (id !== reelId && playing[id]) {
-                setPlaying((prev) => ({
-                  ...prev,
-                  [id]: false,
-                }));
+            // Only change active reel if it's different
+            if (activeReelId !== reelId) {
+              // Pause the current active reel if there is one
+              if (activeReelId) {
+                pauseVideo(activeReelId);
               }
-            });
+              
+              // Set new active reel and play it
+              setActiveReelId(reelId);
+              playVideo(reelId);
+            } else if (!playing[reelId]) {
+              // If same reel but not playing, play it
+              playVideo(reelId);
+            }
+          } else if (playing[reelId]) {
+            // Pause video when scrolling away
+            pauseVideo(reelId);
           }
         });
       },
-      { threshold: 0.7 }
+      { 
+        threshold: 0.7, // Video is visible at 70%
+        rootMargin: "-10% 0px" // Adds a bit of margin to improve scroll detection
+      }
     );
 
     document.querySelectorAll(".reel-container").forEach((reel) => {
@@ -141,7 +210,43 @@ export default function ExplorePage() {
         observer.unobserve(reel);
       });
     };
-  }, [reels, playing]);
+  }, [reels, playing, activeReelId, playVideo, pauseVideo]);
+
+  // Track user interaction with the page to enable audio
+  useEffect(() => {
+    const handleUserInteraction = () => {
+      document.documentElement.setAttribute('data-user-interacted', 'true');
+      
+      // Try to unmute current video if it exists
+      if (activeReelId) {
+        const videoElement = videoRefs.current[activeReelId];
+        if (videoElement && videoElement.muted && !mutedVideos[activeReelId]) {
+          videoElement.muted = false;
+        }
+      }
+    };
+    
+    // Add listeners for common user interactions
+    const events = ['click', 'touchstart', 'keydown'];
+    events.forEach(event => {
+      document.addEventListener(event, handleUserInteraction, { once: true });
+    });
+    
+    return () => {
+      events.forEach(event => {
+        document.removeEventListener(event, handleUserInteraction);
+      });
+    };
+  }, [activeReelId, mutedVideos]);
+
+  // Reset videoRefs when reels change
+  useEffect(() => {
+    reels.forEach(reel => {
+      if (!videoRefs.current[reel.id]) {
+        videoRefs.current[reel.id] = null;
+      }
+    });
+  }, [reels]);
 
   if (loading) {
     return (
@@ -203,17 +308,20 @@ export default function ExplorePage() {
         hasMore={hasMore}
         loader={<div className="text-center py-4">Loading more reels...</div>}
         endMessage={<div className="text-center py-4">No more reels to show</div>}
-        className="flex flex-col w-full"
+        className="flex flex-col w-full snap-y snap-mandatory"
       >
         {reels.map((reel) => (
           <div 
             key={reel.id}
             id={reel.id}
-            className="reel-container snap-start h-[calc(100vh-4rem)] w-full flex items-center justify-center relative"
+            className="reel-container snap-start snap-always h-[calc(100vh-4rem)] w-full flex items-center justify-center relative"
           >
             <Card className="w-full h-full max-w-md mx-auto overflow-hidden relative">
               {reel.video_url ? (
                 <video
+                  ref={(el) => {
+                    videoRefs.current[reel.id] = el;
+                  }}
                   src={reel.video_url}
                   poster={reel.thumbnail_url}
                   className="absolute inset-0 w-full h-full object-cover"
@@ -255,7 +363,7 @@ export default function ExplorePage() {
                 )}
               </div>
               
-              {/* Sound control - now works directly on explore page */}
+              {/* Sound control - unmuted by default */}
               <div className="absolute top-4 right-4 z-20">
                 <Button 
                   variant="ghost" 
@@ -267,7 +375,7 @@ export default function ExplorePage() {
                 </Button>
               </div>
               
-              {/* Link to detail page is now a visible button instead of wrapping the whole card */}
+              {/* Link to detail page */}
               <Link href={`/video/${reel.id}`} className="z-20">
                 <Button 
                   variant="ghost" 
