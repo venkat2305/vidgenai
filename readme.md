@@ -12,6 +12,10 @@
 12. use groq whisper to get the transcriptions. 
 <!-- 13. fix thumbnail image upload issues.  -->
 14. get images based on the transcript section, so we put relevant images for that part of the video. 
+15. production r2 url so we can enable caching.
+16. scroll means go to next reel, mobile responsive
+17. play pause button. 
+18. when we click on unmute button on a reel in explore page we are essentially opening a new page right, lets dont do that instead simply unmute and play the audio. 
 
 venkat
 ZvqBLJP5zionOzUs

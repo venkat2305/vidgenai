@@ -39,7 +39,7 @@ app.add_event_handler("startup", connect_to_mongo)
 app.add_event_handler("shutdown", close_mongo_connection)
 
 # Include routers
-# app.include_router(video.router, prefix="/api/videos", tags=["videos"])
+app.include_router(video.router, prefix="/api/videos", tags=["videos"])
 app.include_router(generation.router, prefix="/api/generation", tags=["generation"])
 
 # Root endpoint
