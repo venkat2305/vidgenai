@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # API keys
     GROQ_API_KEY: Optional[str] = os.getenv("GROQ_API_KEY")
     SERP_API_KEY: Optional[str] = os.getenv("SERP_API_KEY")
+    GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY")
 
     # Video generation settings
     DEFAULT_VIDEO_QUALITY: str = os.getenv("DEFAULT_VIDEO_QUALITY", "720p")
@@ -26,6 +27,7 @@ class Settings(BaseSettings):
 
     # Model settings
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama3-70b-8192")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
     class Config:
         env_file = ".env"
