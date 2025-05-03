@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from app.db.mongodb import mongodb
 from app.db.models.video import VideoCreate, VideoModel, VideoStatus
 from app.services.script.script_generator import generate_script
@@ -9,7 +9,6 @@ from app.services.video.composer import compose_video
 from app.services.s3.storage import upload_to_s3
 import logging
 from datetime import datetime
-from typing import Optional
 
 router = APIRouter()
 logger = logging.getLogger("vidgenai.generation")

@@ -10,7 +10,7 @@
 10. understand r2 upload and its config properly. 
 11. structure the folders properly in cloudflare.
 12. use groq whisper to get the transcriptions. 
-13. fix thumbnail image upload issues. 
+<!-- 13. fix thumbnail image upload issues.  -->
 14. get images based on the transcript section, so we put relevant images for that part of the video. 
 
 venkat
