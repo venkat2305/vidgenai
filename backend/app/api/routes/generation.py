@@ -39,7 +39,7 @@ async def update_video_status(video_id: str, status: VideoStatus, progress: int 
     )
 
 
-async def generate_video_background(video_id: str, aspect_ratio: str = "9:16"):
+async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", apply_effects: bool = True):
     """Background task to generate a video."""
     try:
         videos_collection = mongodb.db.videos
@@ -95,10 +95,11 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16"):
         subtitle_path = await generate_subtitles(script, audio_path)
         subtitle_url = await upload_to_s3(subtitle_path, f"{video_id}.srt")
 
-        # 5. Compose video with the specified aspect ratio
+        # 5. Compose video with the specified aspect ratio and effects
         await update_video_status(video_id, VideoStatus.COMPOSING_VIDEO, 80)
         video_path, thumbnail_path, duration = await compose_video(
-            script, image_data, audio_path, subtitle_path, video_aspect=aspect_ratio
+            script, image_data, audio_path, subtitle_path, 
+            video_aspect=aspect_ratio, apply_effects=apply_effects
         )
 
         # 6. Upload to S3
@@ -127,7 +128,8 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16"):
 async def create_video_generation(
     video_data: VideoCreate,
     background_tasks: BackgroundTasks,
-    aspect_ratio: str = Query("9:16", description="Video aspect ratio (9:16, 16:9, 1:1)")
+    aspect_ratio: str = Query("9:16", description="Video aspect ratio (9:16, 16:9, 1:1)"),
+    apply_effects: bool = Query(True, description="Apply visual effects (zoom/pan) to images")
 ):
     """
     Start the generation of a new video.
@@ -136,6 +138,7 @@ async def create_video_generation(
         video_data: Video creation data
         background_tasks: FastAPI background tasks
         aspect_ratio: Desired aspect ratio for the video (default: 9:16 for short-form vertical video)
+        apply_effects: Whether to apply visual effects like zoom and pan to make the video more dynamic
     """
     # Create a new video document
     video = VideoModel(
@@ -148,8 +151,8 @@ async def create_video_generation(
     videos_collection = mongodb.db.videos
     await videos_collection.insert_one(video.dict())
 
-    # Start background task with aspect ratio
-    background_tasks.add_task(generate_video_background, video.id, aspect_ratio)
+    # Start background task with aspect ratio and effects options
+    background_tasks.add_task(generate_video_background, video.id, aspect_ratio, apply_effects)
 
     return video
 

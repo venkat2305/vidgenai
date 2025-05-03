@@ -94,18 +94,17 @@ class PanEffect(VideoEffect):
         return result
 
 def get_random_effect() -> VideoEffect:
-    """Return a random video effect with appropriate parameters."""
+    """Return a random zoom effect with appropriate parameters for 9:16 videos."""
     import random
     
-    effect_type = random.choice(["zoom", "pan"])
+    # Only use zoom effects, no panning since it doesn't work well with 9:16 videos
+    zoom_variation = random.choice([
+        # Different zooming styles
+        {"start": 1.0, "end": 1.2},   # Gentle zoom in
+        {"start": 1.0, "end": 1.3},   # Medium zoom in
+        {"start": 1.15, "end": 1.0},  # Gentle zoom out
+        {"start": 1.25, "end": 1.0},  # Medium zoom out
+        {"start": 1.0, "end": 1.15},  # Subtle zoom in
+    ])
     
-    if effect_type == "zoom":
-        # Randomly choose between zoom in and zoom out
-        if random.random() > 0.5:
-            return ZoomEffect(1.0, 1.2)  # Zoom in
-        else:
-            return ZoomEffect(1.2, 1.0)  # Zoom out
-    else:
-        # Random pan direction
-        direction = random.choice(["left", "right", "up", "down"])
-        return PanEffect(direction, speed=0.15)
+    return ZoomEffect(zoom_variation["start"], zoom_variation["end"])
