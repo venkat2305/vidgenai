@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Play, Volume2, VolumeX } from "lucide-react";
+import { Play, Volume2, VolumeX, ExternalLink } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import InfiniteScroll from "react-infinite-scroll-component";
 import { toast } from "sonner";
@@ -13,8 +13,7 @@ import Link from "next/link";
 export default function ExplorePage() {
   const [reels, setReels] = useState<Video[]>([]);
   const [hasMore, setHasMore] = useState(true);
-  const [activeReel, setActiveReel] = useState<string | null>(null);
-  const [muted, setMuted] = useState(true);
+  const [mutedVideos, setMutedVideos] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<Record<string, boolean>>({});
   const [skip, setSkip] = useState(0);
@@ -33,6 +32,14 @@ export default function ExplorePage() {
         status: VideoStatus.COMPLETED 
       });
       setReels(videos);
+      
+      // Initialize all videos as muted
+      const initialMutedState: Record<string, boolean> = {};
+      videos.forEach(video => {
+        initialMutedState[video.id] = true;
+      });
+      setMutedVideos(initialMutedState);
+      
       setSkip(videos.length);
       setLoading(false);
     } catch (error) {
@@ -58,6 +65,13 @@ export default function ExplorePage() {
         return;
       }
       
+      // Initialize new videos as muted
+      const newMutedState = {...mutedVideos};
+      videos.forEach(video => {
+        newMutedState[video.id] = true;
+      });
+      setMutedVideos(newMutedState);
+      
       setReels((prev) => [...prev, ...videos]);
       setSkip(skip + videos.length);
     } catch (error) {
@@ -73,8 +87,22 @@ export default function ExplorePage() {
     }));
   };
 
-  const toggleMute = () => {
-    setMuted(!muted);
+  const toggleMute = (reelId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setMutedVideos((prev) => ({
+      ...prev,
+      [reelId]: !prev[reelId],
+    }));
+    
+    // If unmuting, make sure the video is playing
+    if (mutedVideos[reelId]) {
+      setPlaying((prev) => ({
+        ...prev,
+        [reelId]: true,
+      }));
+    }
   };
 
   // Intersection Observer to autoplay videos when in view
@@ -84,7 +112,6 @@ export default function ExplorePage() {
         entries.forEach((entry) => {
           const reelId = entry.target.id;
           if (entry.isIntersecting) {
-            setActiveReel(reelId);
             setPlaying((prev) => ({
               ...prev,
               [reelId]: true,
@@ -133,16 +160,9 @@ export default function ExplorePage() {
           .loading-dot {
             width: 12px;
             height: 12px;
+            background-color: #ccc;
             border-radius: 50%;
-            background-color: currentColor;
-            opacity: 0.3;
-            animation: loading 1.4s infinite ease-in-out both;
-          }
-          .loading-dot:nth-child(1) {
-            animation-delay: -0.32s;
-          }
-          .loading-dot:nth-child(2) {
-            animation-delay: -0.16s;
+            animation: loading 1.2s infinite ease-in-out;
           }
           @keyframes loading {
             0%, 80%, 100% {
@@ -150,7 +170,6 @@ export default function ExplorePage() {
             }
             40% {
               transform: scale(1);
-              opacity: 1;
             }
           }
         `}</style>
@@ -158,7 +177,6 @@ export default function ExplorePage() {
     );
   }
 
-  // Show empty state if no reels are available
   if (reels.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-4">
@@ -202,7 +220,7 @@ export default function ExplorePage() {
                   autoPlay={playing[reel.id] || false}
                   loop
                   controls={false}
-                  muted={muted}
+                  muted={mutedVideos[reel.id]}
                   playsInline
                 />
               ) : (
@@ -237,14 +255,27 @@ export default function ExplorePage() {
                 )}
               </div>
               
-              <div className="absolute top-4 right-4">
-                <Button variant="ghost" size="icon" className="text-white" onClick={toggleMute}>
-                  {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+              {/* Sound control - now works directly on explore page */}
+              <div className="absolute top-4 right-4 z-20">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="text-white" 
+                  onClick={(e) => toggleMute(reel.id, e)}
+                >
+                  {mutedVideos[reel.id] ? <VolumeX size={20} /> : <Volume2 size={20} />}
                 </Button>
               </div>
               
-              <Link href={`/video/${reel.id}`} className="absolute inset-0 z-10">
-                <span className="sr-only">View reel</span>
+              {/* Link to detail page is now a visible button instead of wrapping the whole card */}
+              <Link href={`/video/${reel.id}`} className="z-20">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="absolute top-4 left-4 text-white bg-black/20 rounded-full h-10 w-10 p-0"
+                >
+                  <ExternalLink size={18} />
+                </Button>
               </Link>
               
               <Button 
