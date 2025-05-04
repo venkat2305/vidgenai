@@ -74,9 +74,11 @@ export const getVideos = async (params?: {
     const response = await api.get(url, { params });
     console.log('Videos API response:', response.status, response.data?.length || 0, 'videos');
     return response.data;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching videos:', error);
-    console.error('Error details:', error.response?.data || error.message);
+    if (axios.isAxiosError(error)) {
+      console.error('Error details:', error.response?.data || error.message);
+    }
     throw error;
   }
 };
@@ -86,9 +88,11 @@ export const getVideo = async (videoId: string): Promise<Video> => {
   try {
     const response = await api.get(`/api/videos/${videoId}`);
     return response.data;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Error fetching video ${videoId}:`, error);
-    console.error('Error details:', error.response?.data || error.message);
+    if (axios.isAxiosError(error)) {
+      console.error('Error details:', error.response?.data || error.message);
+    }
     throw error;
   }
 };
@@ -107,9 +111,11 @@ export const createVideo = async (
       }
     });
     return response.data;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating video:', error);
-    console.error('Error details:', error.response?.data || error.message);
+    if (axios.isAxiosError(error)) {
+      console.error('Error details:', error.response?.data || error.message);
+    }
     throw error;
   }
 };
@@ -119,9 +125,11 @@ export const getGenerationStatus = async (jobId: string): Promise<Video> => {
   try {
     const response = await api.get(`/api/generation/${jobId}`);
     return response.data;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Error checking generation status for job ${jobId}:`, error);
-    console.error('Error details:', error.response?.data || error.message);
+    if (axios.isAxiosError(error)) {
+      console.error('Error details:', error.response?.data || error.message);
+    }
     throw error;
   }
 };

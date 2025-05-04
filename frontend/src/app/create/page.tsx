@@ -36,7 +36,6 @@ const initialFormState: FormState = {
 export default function CreatePage() {
   const [formState, setFormState] = useState<FormState>(initialFormState);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [createdVideoId, setCreatedVideoId] = useState<string | null>(null);
   const router = useRouter();
 
   // Handle form input changes
@@ -67,14 +66,14 @@ export default function CreatePage() {
 
     // Create a title if not provided
     const title = formState.title || 
-      `${formState.celebrity_name}'s ${formState.focus === 'career' ? 'Career' : 
+      `${formState.celebrity_name}&apos;s ${formState.focus === 'career' ? 'Career' : 
         formState.focus === 'personal' ? 'Personal Life' :
         formState.focus === 'achievements' ? 'Achievements' :
         formState.focus === 'legacy' ? 'Legacy' : 'Early Life'} Highlight`;
     
     // Create a description if not provided
     const description = formState.description || 
-      `AI-generated sports reel about ${formState.celebrity_name}'s ${
+      `AI-generated sports reel about ${formState.celebrity_name}&apos;s ${
         formState.focus === 'career' ? 'professional career' : 
         formState.focus === 'personal' ? 'personal journey' :
         formState.focus === 'achievements' ? 'awards and achievements' :
@@ -97,9 +96,6 @@ export default function CreatePage() {
         formState.aspectRatio, 
         formState.applyEffects
       );
-      
-      // Store the created video ID
-      setCreatedVideoId(response.id);
       
       // Show success toast
       toast.success("Video generation started!", {
@@ -258,7 +254,7 @@ export default function CreatePage() {
                 <DialogHeader>
                   <DialogTitle>How Reel Generation Works</DialogTitle>
                   <DialogDescription>
-                    Here's how our AI creates your sports celebrity history reels:
+                    Here&apos;s how our AI creates your sports celebrity history reels:
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">

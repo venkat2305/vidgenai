@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Play, Volume2, VolumeX, ExternalLink } from "lucide-react";
@@ -121,7 +121,7 @@ export default function ExplorePage() {
   };
 
   // Play the video for a specific reel
-  const playVideo = (reelId: string) => {
+  const playVideo = useCallback((reelId: string) => {
     const videoElement = videoRefs.current[reelId];
     if (videoElement) {
       // First set playing state
@@ -154,16 +154,16 @@ export default function ExplorePage() {
         });
       }
     }
-  };
+  }, [mutedVideos]);
 
   // Pause the video for a specific reel
-  const pauseVideo = (reelId: string) => {
+  const pauseVideo = useCallback((reelId: string) => {
     const videoElement = videoRefs.current[reelId];
     if (videoElement) {
       videoElement.pause();
       setPlaying(prev => ({ ...prev, [reelId]: false }));
     }
-  };
+  }, []);
 
   // Intersection Observer to autoplay videos when in view
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -12,7 +12,7 @@ import { getVideo, Video, VideoStatus } from "@/lib/api";
 
 export default function VideoPage() {
   const { id } = useParams();
-  const videoId = Array.isArray(id) ? id[0] : id;
+  const videoId = Array.isArray(id) ? id[0] : id || '';
   const [videoData, setVideoData] = useState<Video | null>(null);
   const [loading, setLoading] = useState(true);
   const [muted, setMuted] = useState(false);
@@ -21,25 +21,7 @@ export default function VideoPage() {
   const router = useRouter();
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    // Fetch the video data initially
-    fetchVideoData();
-
-    // Set up polling for video status updates if needed
-    pollingIntervalRef.current = setInterval(() => {
-      fetchVideoData();
-    }, 5000); // Poll every 5 seconds
-
-    return () => {
-      // Clean up the polling interval when component unmounts
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-    };
-  }, [videoId]);
-
-  // Function to fetch video data from API
-  const fetchVideoData = async () => {
+  const fetchVideoData = useCallback(async () => {
     try {
       const data = await getVideo(videoId);
       setVideoData(data);
@@ -58,7 +40,24 @@ export default function VideoPage() {
       setLoading(false);
       toast.error("Failed to load video data");
     }
-  };
+  }, [videoId]);
+
+  useEffect(() => {
+    // Fetch the video data initially
+    fetchVideoData();
+
+    // Set up polling for video status updates if needed
+    pollingIntervalRef.current = setInterval(() => {
+      fetchVideoData();
+    }, 5000); // Poll every 5 seconds
+
+    return () => {
+      // Clean up the polling interval when component unmounts
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, [fetchVideoData]);
 
   const toggleMute = () => {
     setMuted(!muted);
@@ -133,7 +132,7 @@ export default function VideoPage() {
       <div className="flex flex-col items-center justify-center flex-1 p-4">
         <h2 className="text-2xl font-semibold mb-4">Video Not Found</h2>
         <p className="text-center text-muted-foreground mb-6">
-          The video you're looking for doesn't exist or has been removed.
+          The video you&apos;re looking for doesn&apos;t exist or has been removed.
         </p>
         <Link href="/explore">
           <Button>Back to Explore</Button>
