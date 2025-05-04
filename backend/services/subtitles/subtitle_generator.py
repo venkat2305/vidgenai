@@ -5,7 +5,6 @@ import json
 import re
 import httpx
 from typing import List, Tuple, Dict, Any
-import whisper
 import asyncio
 from core.config import settings
 
@@ -28,12 +27,11 @@ async def generate_subtitles(script: str, audio_path: str) -> str:
         temp_dir = tempfile.gettempdir()
         subtitle_filename = os.path.join(temp_dir, f"subtitles_{os.path.basename(audio_path)}.srt")
         
-        # Use whisper to transcribe audio with timestamps
-        logger.info(f"Transcribing audio with whisper: {audio_path}")
+        # Use Groq's Whisper model to transcribe audio with timestamps
+        logger.info(f"Transcribing audio with Groq Whisper API: {audio_path}")
         
-        # Run whisper in a separate thread to avoid blocking
-        model = await asyncio.to_thread(whisper.load_model, "base")
-        result = await asyncio.to_thread(model.transcribe, audio_path, fp16=False)
+        # Get transcription from Groq API
+        result = await transcribe_audio_with_groq(audio_path)
         
         # Correct the transcription using the original script with Groq API
         corrected_segments = await correct_transcription_with_groq(result["segments"], script)
@@ -55,13 +53,71 @@ async def generate_subtitles(script: str, audio_path: str) -> str:
     except Exception as e:
         logger.error(f"Error generating subtitles: {str(e)}", exc_info=True)
         
-        # Fallback to simple time-based subtitle generation if whisper fails
+        # Fallback to simple time-based subtitle generation if transcription fails
         try:
             logger.info("Falling back to simple subtitle generation")
             return await generate_simple_subtitles(script, subtitle_filename)
         except Exception as fallback_error:
             logger.error(f"Fallback subtitle generation failed: {str(fallback_error)}", exc_info=True)
             raise Exception(f"Failed to generate subtitles: {str(e)}")
+
+
+async def transcribe_audio_with_groq(audio_path: str) -> Dict[str, Any]:
+    """
+    Transcribe audio using Groq's Whisper-large-v3-turbo model.
+    
+    Args:
+        audio_path: Path to the audio file
+        
+    Returns:
+        Dictionary containing transcription results with segments
+    """
+    if not settings.GROQ_API_KEY:
+        raise ValueError("Groq API key is required for transcription")
+    
+    logger.info(f"Transcribing audio using Groq Whisper-large-v3-turbo: {audio_path}")
+    
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            headers = {
+                "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+            }
+            
+            # Read audio file as binary data
+            with open(audio_path, "rb") as audio_file:
+                audio_data = audio_file.read()
+            
+            # Prepare the multipart form data
+            files = {
+                "file": (os.path.basename(audio_path), audio_data),
+                "model": (None, "whisper-large-v3-turbo"),
+                "response_format": (None, "verbose_json"),
+                "timestamp_granularities[]": (None, "segment"),
+            }
+            
+            # Make the API request to Groq's Whisper endpoint
+            response = await client.post(
+                "https://api.groq.com/openai/v1/audio/transcriptions",
+                headers=headers,
+                files=files
+            )
+            response.raise_for_status()
+            result = response.json()
+            
+            # Format the result to match the expected structure
+            if "segments" not in result:
+                # If segments are not provided, create a basic segment
+                result["segments"] = [{
+                    "start": 0.0,
+                    "end": float(result.get("duration", 0)),
+                    "text": result.get("text", "")
+                }]
+                
+            return result
+            
+    except Exception as e:
+        logger.error(f"Error calling Groq Whisper API: {str(e)}", exc_info=True)
+        raise Exception(f"Failed to transcribe audio with Groq: {str(e)}")
 
 
 async def correct_transcription_with_groq(segments: List[Dict[str, Any]], script: str) -> List[Dict[str, Any]]:
