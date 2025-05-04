@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
-from app.db.mongodb import mongodb
-from app.db.models.video import VideoModel
+from db.mongodb import mongodb
+from db.models.video import VideoModel
 
 router = APIRouter()
 

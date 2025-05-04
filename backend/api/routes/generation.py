@@ -1,12 +1,12 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
-from app.db.mongodb import mongodb
-from app.db.models.video import VideoCreate, VideoModel, VideoStatus
-from app.services.script.script_generator import generate_script
-from app.services.media.image_fetcher import fetch_images
-from app.services.audio.audio_generator import generate_audio
-from app.services.subtitles.subtitle_generator import generate_subtitles
-from app.services.video.composer import compose_video
-from app.services.s3.storage import upload_to_s3
+from db.mongodb import mongodb
+from db.models.video import VideoCreate, VideoModel, VideoStatus
+from services.script.script_generator import generate_script
+from services.media.image_fetcher import fetch_images
+from services.audio.audio_generator import generate_audio
+from services.subtitles.subtitle_generator import generate_subtitles
+from services.video.composer import compose_video
+from services.s3.storage import upload_to_s3
 import logging
 from datetime import datetime
 

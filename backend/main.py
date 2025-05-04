@@ -2,9 +2,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
-from app.api.routes import video, generation
-from app.db.mongodb import connect_to_mongo, close_mongo_connection
-from app.utils.error_handlers import handle_exception
+from api.routes import video, generation
+from db.mongodb import connect_to_mongo, close_mongo_connection
+from utils.error_handlers import handle_exception
 
 # Configure logging
 logging.basicConfig(
@@ -46,7 +46,3 @@ app.include_router(generation.router, prefix="/api/generation", tags=["generatio
 @app.get("/")
 async def root():
     return {"message": "Welcome to VidGenAI - Sports Celebrity History Reels Generator"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

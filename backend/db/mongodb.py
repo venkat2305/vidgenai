@@ -1,6 +1,6 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 import logging
-from app.core.config import settings
+from core.config import settings
 
 logger = logging.getLogger("vidgenai.db")
 

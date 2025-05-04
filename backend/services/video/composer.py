@@ -9,7 +9,7 @@ import shutil
 import numpy as np
 import cv2
 from typing import List, Tuple, Dict, Any, Optional
-from app.services.video.effects import get_random_effect, VideoEffect, ZoomEffect, PanEffect
+from services.video.effects import get_random_effect, VideoEffect, ZoomEffect, PanEffect
 
 logger = logging.getLogger("vidgenai.video_composer")
 

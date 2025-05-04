@@ -2,7 +2,7 @@ import logging
 import os
 from google import genai
 from google.genai import types
-from app.core.config import settings
+from core.config import settings
 
 logger = logging.getLogger("vidgenai.script_generator")
 

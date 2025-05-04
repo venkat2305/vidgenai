@@ -2,7 +2,7 @@ import aiohttp
 import logging
 import re
 from typing import List, Dict, Any
-from app.core.config import settings
+from core.config import settings
 
 logger = logging.getLogger("vidgenai.image_fetcher")
 
