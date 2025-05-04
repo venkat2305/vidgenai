@@ -3,7 +3,7 @@ export const LOCAL_BACKEND_URL = "http://0.0.0.0:8000";
 export const PRODUCTION_BACKEND_URL = "https://vidgenai-qp38.onrender.com";
 
 // MANUAL TOGGLE: Set to true to use production backend, false to use local
-export const USE_PRODUCTION_BACKEND = false;
+export const USE_PRODUCTION_BACKEND = true;
 
 // Helper function to determine which backend URL to use
 export const getBackendUrl = () => {
