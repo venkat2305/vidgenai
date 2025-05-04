@@ -2,7 +2,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from db.mongodb import mongodb
 from db.models.video import VideoCreate, VideoModel, VideoStatus
 from services.script.script_generator import generate_script
-from services.media.image_fetcher import fetch_images
+from services.media.image_fetcher import fetch_images, fetch_contextual_images
 from services.audio.audio_generator import generate_audio
 from services.subtitles.subtitle_generator import generate_subtitles
 from services.video.composer import compose_video
@@ -38,7 +38,7 @@ async def update_video_status(video_id: str, status: VideoStatus, progress: int 
     )
 
 
-async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", apply_effects: bool = True):
+async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", apply_effects: bool = True, use_contextual_images: bool = True):
     """Background task to generate a video."""
     try:
         videos_collection = mongodb.db.videos
@@ -55,7 +55,22 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
 
         # 2. Fetch images with metadata for the specified aspect ratio
         await update_video_status(video_id, VideoStatus.FETCHING_IMAGES, 30)
-        image_data = await fetch_images(video["celebrity_name"], script, aspect_ratio=aspect_ratio)
+        
+        if use_contextual_images:
+            # Use the new contextual image fetching functionality
+            # Segment the script into parts and get images for each segment
+            image_data = await fetch_contextual_images(
+                video["celebrity_name"], 
+                script, 
+                num_segments=5,  # Divide script into 5 segments (adjust as needed)
+                images_per_segment=3,  # Get 3 images per segment
+                aspect_ratio=aspect_ratio
+            )
+            logger.info(f"Fetched {len(image_data)} contextual images across script segments")
+        else:
+            # Use the original image fetching approach
+            image_data = await fetch_images(video["celebrity_name"], script, aspect_ratio=aspect_ratio)
+            
         # Extract just the URLs for database storage
         image_urls = [img["url"] for img in image_data]
         await update_video_status(video_id, VideoStatus.FETCHING_IMAGES, 40, image_urls=image_urls)
@@ -128,7 +143,8 @@ async def create_video_generation(
     video_data: VideoCreate,
     background_tasks: BackgroundTasks,
     aspect_ratio: str = Query("9:16", description="Video aspect ratio (9:16, 16:9, 1:1)"),
-    apply_effects: bool = Query(True, description="Apply visual effects (zoom/pan) to images")
+    apply_effects: bool = Query(True, description="Apply visual effects (zoom/pan) to images"),
+    use_contextual_images: bool = Query(False, description="Use context-aware images that change with the script content")
 ):
     """
     Start the generation of a new video.
@@ -138,6 +154,7 @@ async def create_video_generation(
         background_tasks: FastAPI background tasks
         aspect_ratio: Desired aspect ratio for the video (default: 9:16 for short-form vertical video)
         apply_effects: Whether to apply visual effects like zoom and pan to make the video more dynamic
+        use_contextual_images: Whether to use context-aware images that change as the script progresses
     """
     # Create a new video document
     video = VideoModel(
@@ -150,8 +167,8 @@ async def create_video_generation(
     videos_collection = mongodb.db.videos
     await videos_collection.insert_one(video.dict())
 
-    # Start background task with aspect ratio and effects options
-    background_tasks.add_task(generate_video_background, video.id, aspect_ratio, apply_effects)
+    # Start background task with aspect ratio, effects options, and contextual images flag
+    background_tasks.add_task(generate_video_background, video.id, aspect_ratio, apply_effects, use_contextual_images)
 
     return video
 

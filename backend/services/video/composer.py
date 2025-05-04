@@ -49,30 +49,58 @@ async def compose_video(
     logger.info(f"Creating {video_width}x{video_height} video with {video_aspect} aspect ratio")
 
     # 1) Download images and prepare them for the aspect ratio
-    image_urls = [img["url"] for img in image_data] if isinstance(image_data[0], dict) else image_data
-    
-    # Prevent duplicate images by removing repeated URLs
-    unique_image_urls = []
-    for url in image_urls:
-      if url not in unique_image_urls:
-        unique_image_urls.append(url)
-    
-    # If we removed too many duplicates, we'll use some duplicates but ensure they're not consecutive
-    if len(unique_image_urls) < min(5, len(image_urls) // 2):
-      logger.warning(f"Not enough unique images ({len(unique_image_urls)}). Will use some duplicates non-consecutively.")
-      image_urls_arranged = arrange_images_without_consecutive_duplicates(image_urls)
-    else:
-      # Use unique images, potentially repeating if needed but not consecutively
-      image_urls_arranged = arrange_images_without_consecutive_duplicates(unique_image_urls)
+    # Check if we're dealing with contextual images that have segment timing information
+    has_contextual_timing = all(
+      "segment_start_time" in img and "segment_end_time" in img 
+      for img in image_data if isinstance(img, dict)
+    )
+
+    if has_contextual_timing:
+      logger.info("Using contextual images with timing information")
+      # Sort images by their segment start times
+      image_data = sorted(image_data, key=lambda img: img.get("segment_start_time", 0))
       
-      # If we need more images to match the audio duration, add more non-consecutive duplicates
-      if len(image_urls_arranged) < 8:  # Ensure we have at least 8 images for a decent video
-        while len(image_urls_arranged) < 8 and len(image_urls_arranged) < len(image_urls):
-          for url in unique_image_urls:
-            if len(image_urls_arranged) >= 8:
-              break
-            if image_urls_arranged[-1] != url:  # Avoid consecutive duplicates
-              image_urls_arranged.append(url)
+      # Group images by segment
+      segments = {}
+      for img in image_data:
+        segment_idx = img.get("segment_idx", 0)
+        if segment_idx not in segments:
+          segments[segment_idx] = []
+        segments[segment_idx].append(img)
+      
+      # Extract URLs, ensuring we have at least one image per segment
+      image_urls_arranged = []
+      for idx in sorted(segments.keys()):
+        segment_images = segments[idx]
+        # Add all images for this segment
+        for img in segment_images:
+          image_urls_arranged.append(img["url"])
+    else:
+      # Traditional approach for non-contextual images
+      image_urls = [img["url"] for img in image_data] if isinstance(image_data[0], dict) else image_data
+      
+      # Prevent duplicate images by removing repeated URLs
+      unique_image_urls = []
+      for url in image_urls:
+        if url not in unique_image_urls:
+          unique_image_urls.append(url)
+      
+      # If we removed too many duplicates, we'll use some duplicates but ensure they're not consecutive
+      if len(unique_image_urls) < min(5, len(image_urls) // 2):
+        logger.warning(f"Not enough unique images ({len(unique_image_urls)}). Will use some duplicates non-consecutively.")
+        image_urls_arranged = arrange_images_without_consecutive_duplicates(image_urls)
+      else:
+        # Use unique images, potentially repeating if needed but not consecutively
+        image_urls_arranged = arrange_images_without_consecutive_duplicates(unique_image_urls)
+        
+        # If we need more images to match the audio duration, add more non-consecutive duplicates
+        if len(image_urls_arranged) < 8:  # Ensure we have at least 8 images for a decent video
+          while len(image_urls_arranged) < 8 and len(image_urls_arranged) < len(image_urls):
+            for url in unique_image_urls:
+              if len(image_urls_arranged) >= 8:
+                break
+              if image_urls_arranged[-1] != url:  # Avoid consecutive duplicates
+                image_urls_arranged.append(url)
     
     logger.info(f"Using {len(image_urls_arranged)} images after duplicate handling")
     
@@ -89,8 +117,32 @@ async def compose_video(
     total_duration = await get_media_duration(audio_path)
 
     # 4) Compute per-image durations
-    per = total_duration / len(processed_paths)
-    durations = [per] * len(processed_paths)
+    if has_contextual_timing:
+      # Use timing from the segment data
+      durations = []
+      for idx, img_path in enumerate(processed_paths):
+        if idx < len(image_data):
+          img_data = image_data[idx]
+          # Each image duration is based on its segment timing
+          duration = img_data.get("segment_end_time", 0) - img_data.get("segment_start_time", 0)
+          # Ensure reasonable duration
+          if duration <= 0 or duration > total_duration:
+            duration = total_duration / len(processed_paths)
+          durations.append(duration)
+        else:
+          # Fallback for any extra images
+          durations.append(total_duration / len(processed_paths))
+          
+      # Adjust durations to match total audio duration
+      total_img_duration = sum(durations)
+      if abs(total_img_duration - total_duration) > 0.1:
+        scale_factor = total_duration / total_img_duration
+        durations = [d * scale_factor for d in durations]
+    else:
+      # Equal distribution of time for non-contextual images
+      per = total_duration / len(processed_paths)
+      durations = [per] * len(processed_paths)
+      
     # adjust last slice to hit exact total
     durations[-1] = total_duration - sum(durations[:-1])
 
