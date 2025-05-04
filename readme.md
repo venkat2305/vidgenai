@@ -11,7 +11,7 @@
 11. structure the folders properly in cloudflare.
 12. use groq whisper to get the transcriptions. 
 <!-- 13. fix thumbnail image upload issues.  -->
-14. get images based on the transcript section, so we put relevant images for that part of the video. 
+14. get images based on the transcript section, so we put relevant images for that part of the video.
 15. production r2 url so we can enable caching.
 16. scroll means go to next reel, mobile responsive
 17. play pause button.

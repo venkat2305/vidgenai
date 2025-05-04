@@ -1,8 +1,9 @@
 import axios from 'axios';
+import { getBackendUrl } from '../config/api-config';
 
 // Base API URL that works with Next.js in both development and production
-// In development, using relative URLs can help avoid CORS issues
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const BASE_URL = getBackendUrl();
+console.log('Base URL for API:', BASE_URL);
 
 // Create an axios instance for API calls
 const api = axios.create({
