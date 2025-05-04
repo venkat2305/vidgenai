@@ -105,56 +105,49 @@ export default function ExplorePage() {
   const toggleMute = (reelId: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
-    setMutedVideos((prev) => ({
-      ...prev,
-      [reelId]: !prev[reelId],
-    }));
-    
-    // If unmuting, make sure the video is playing
-    if (mutedVideos[reelId]) {
-      setPlaying((prev) => ({
-        ...prev,
-        [reelId]: true,
-      }));
-    }
+  
+    setMutedVideos((m) => {
+      const newMuted = !m[reelId];
+      // Sync actual <video> element
+      const videoEl = videoRefs.current[reelId];
+      if (videoEl) {
+        videoEl.muted = newMuted;
+        // if unmuting, ensure it’s playing
+        if (!newMuted && !playing[reelId]) {
+          playVideo(reelId);
+        }
+      }
+      return { ...m, [reelId]: newMuted };
+    });
   };
 
   // Play the video for a specific reel
-  const playVideo = useCallback((reelId: string) => {
-    const videoElement = videoRefs.current[reelId];
-    if (videoElement) {
-      // First set playing state
-      setPlaying(prev => ({ ...prev, [reelId]: true }));
-      
-      // Try to play with sound (works if user interacted with the page)
-      const playPromise = videoElement.play();
-      
+  const playVideo = useCallback(
+    (reelId: string) => {
+      const videoEl = videoRefs.current[reelId];
+      if (!videoEl) return;
+  
+      // mark as playing
+      setPlaying((prev) => ({ ...prev, [reelId]: true }));
+  
+      const playPromise = videoEl.play();
       if (playPromise !== undefined) {
-        playPromise.catch(error => {
-          // Auto-play with sound was prevented by browser
-          console.warn('Autoplay with sound prevented:', error);
-          
-          // If autoplay with sound fails, try again muted and then unmute
-          if (!mutedVideos[reelId]) {
-            // Temporarily mute the video
-            videoElement.muted = true;
-            
-            // Try to play muted
-            videoElement.play()
-              .then(() => {
-                // Check if user has interacted with the page, then unmute
-                const userInteracted = document.documentElement.hasAttribute('data-user-interacted');
-                if (userInteracted) {
-                  videoElement.muted = false;
-                }
-              })
-              .catch(err => console.error('Even muted autoplay failed:', err));
-          }
+        playPromise.catch((err) => {
+          console.warn("Autoplay prevented:", err);
+          // Mute via state to allow muted autoplay
+          setMutedVideos((m) => ({ ...m, [reelId]: true }));
+          // Try again muted
+          videoEl.muted = true;
+          videoEl
+            .play()
+            .catch((e) =>
+              console.error("Muted autoplay still failed:", e)
+            );
         });
       }
-    }
-  }, [mutedVideos]);
+    },
+    [setPlaying, setMutedVideos]
+  );
 
   // Pause the video for a specific reel
   const pauseVideo = useCallback((reelId: string) => {
