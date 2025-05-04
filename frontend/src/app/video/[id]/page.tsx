@@ -22,6 +22,11 @@ export default function VideoPage() {
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchVideoData = useCallback(async () => {
+    if (!videoId) {
+      console.error("No video ID provided");
+      setLoading(false);
+      return;
+    }
     try {
       const data = await getVideo(videoId);
       setVideoData(data);
@@ -156,10 +161,7 @@ export default function VideoPage() {
         </div>
 
         <Card className="p-6">
-          <h2 className="text-lg font-medium mb-4">{videoData.title}</h2>
-          <p className="text-sm text-muted-foreground mb-6">
-            Celebrity: {videoData.celebrity_name}
-          </p>
+          <h2 className="text-lg font-medium mb-4">{videoData.celebrity_name}</h2>
 
           <div className="mb-8">
             <div className="flex justify-between text-sm mb-2">
