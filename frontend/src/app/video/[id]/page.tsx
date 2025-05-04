@@ -12,7 +12,7 @@ import { getVideo, Video, VideoStatus } from "@/lib/api";
 
 export default function VideoPage() {
   const { id } = useParams();
-  const videoId = Array.isArray(id) ? id[0] : id || '';
+  const videoId = Array.isArray(id) ? id[0] : id;
   const [videoData, setVideoData] = useState<Video | null>(null);
   const [loading, setLoading] = useState(true);
   const [muted, setMuted] = useState(false);
@@ -280,7 +280,7 @@ export default function VideoPage() {
           
           <div className="absolute inset-0 bg-black/30" />
           
-          <div className="absolute bottom-0 left-0 right-0 p-4 text-white z-10">
+          {/* <div className="absolute bottom-0 left-0 right-0 p-4 text-white z-10">
             <div className="flex items-center gap-3 mb-3">
               <Avatar>
                 <AvatarImage src={videoData.thumbnail_url || `/placeholder-avatar.png`} alt={videoData.celebrity_name} />
@@ -298,7 +298,7 @@ export default function VideoPage() {
               <div>{new Date(videoData.created_at).toLocaleDateString()}</div>
               <div>{videoData.duration ? `${Math.round(videoData.duration)}s` : "Video"}</div>
             </div>
-          </div>
+          </div> */}
         </Card>
       </div>
       

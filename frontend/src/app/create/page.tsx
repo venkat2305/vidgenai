@@ -115,7 +115,7 @@ export default function CreatePage() {
   };
 
   return (
-    <div className="container max-w-xl py-8">
+    <div className="container max-w-xl py-8 mx-auto">
       <h1 className="text-3xl font-bold mb-6 text-center">Create New Sports Reel</h1>
       
       <Card>

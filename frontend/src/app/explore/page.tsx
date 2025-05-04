@@ -341,7 +341,7 @@ export default function ExplorePage() {
               
               <div className="absolute inset-0 bg-black/30" />
               
-              <div className="absolute bottom-0 left-0 right-0 p-4 text-white z-10">
+              {/* <div className="absolute bottom-0 left-0 right-0 p-4 text-white z-10">
                 <div className="flex items-center gap-3 mb-3">
                   <Avatar>
                     <AvatarImage src={reel.thumbnail_url || `/placeholder-avatar.png`} alt={reel.celebrity_name} />
@@ -352,7 +352,7 @@ export default function ExplorePage() {
                     <p className="text-sm opacity-90">{reel.title}</p>
                   </div>
                 </div>
-              </div>
+              </div> */}
               
               {/* Video controls */}
               <div className="absolute inset-0 flex items-center justify-center" onClick={() => togglePlay(reel.id)}>
