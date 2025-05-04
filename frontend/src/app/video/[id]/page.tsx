@@ -200,33 +200,92 @@ export default function VideoPage() {
 
           {/* Show generation steps */}
           <div className="space-y-3">
-            <div className={`flex items-center gap-3 ${videoData.progress >= 10 ? "text-green-600" : "text-muted-foreground"}`}>
-              <div className={`w-6 h-6 flex items-center justify-center rounded-full text-white ${videoData.progress >= 10 ? "bg-green-600" : "bg-muted"}`}>
-                1
+            <div className={`flex items-center gap-3 ${
+              videoData.status === VideoStatus.GENERATING_SCRIPT || 
+              videoData.status === VideoStatus.FETCHING_IMAGES ||
+              videoData.status === VideoStatus.GENERATING_AUDIO || 
+              videoData.status === VideoStatus.GENERATING_SUBTITLES || 
+              videoData.status === VideoStatus.COMPOSING_VIDEO || 
+              videoData.status === VideoStatus.UPLOADING
+                ? "text-muted-foreground" 
+                : videoData.progress >= 20 ? "text-green-600" : "text-muted-foreground"
+            }`}>
+              <div className={`w-6 h-6 flex items-center justify-center rounded-full text-white ${
+                videoData.status === VideoStatus.GENERATING_SCRIPT 
+                  ? "bg-blue-600" 
+                  : videoData.progress >= 20 ? "bg-green-600" : "bg-muted"
+              }`}>
+                {videoData.status === VideoStatus.GENERATING_SCRIPT ? "⟳" : "1"}
               </div>
               <span>Generating script</span>
             </div>
-            <div className={`flex items-center gap-3 ${videoData.progress >= 30 ? "text-green-600" : "text-muted-foreground"}`}>
-              <div className={`w-6 h-6 flex items-center justify-center rounded-full text-white ${videoData.progress >= 30 ? "bg-green-600" : "bg-muted"}`}>
-                2
+            
+            <div className={`flex items-center gap-3 ${
+              videoData.status === VideoStatus.FETCHING_IMAGES || 
+              videoData.status === VideoStatus.GENERATING_AUDIO || 
+              videoData.status === VideoStatus.GENERATING_SUBTITLES || 
+              videoData.status === VideoStatus.COMPOSING_VIDEO || 
+              videoData.status === VideoStatus.UPLOADING
+                ? "text-muted-foreground" 
+                : videoData.progress >= 40 ? "text-green-600" : "text-muted-foreground"
+            }`}>
+              <div className={`w-6 h-6 flex items-center justify-center rounded-full text-white ${
+                videoData.status === VideoStatus.FETCHING_IMAGES 
+                  ? "bg-blue-600" 
+                  : videoData.progress >= 40 ? "bg-green-600" : "bg-muted"
+              }`}>
+                {videoData.status === VideoStatus.FETCHING_IMAGES ? "⟳" : "2"}
               </div>
               <span>Finding relevant images</span>
             </div>
-            <div className={`flex items-center gap-3 ${videoData.progress >= 50 ? "text-green-600" : "text-muted-foreground"}`}>
-              <div className={`w-6 h-6 flex items-center justify-center rounded-full text-white ${videoData.progress >= 50 ? "bg-green-600" : "bg-muted"}`}>
-                3
+            
+            <div className={`flex items-center gap-3 ${
+              videoData.status === VideoStatus.GENERATING_AUDIO || 
+              videoData.status === VideoStatus.GENERATING_SUBTITLES || 
+              videoData.status === VideoStatus.COMPOSING_VIDEO || 
+              videoData.status === VideoStatus.UPLOADING
+                ? "text-muted-foreground" 
+                : videoData.progress >= 60 ? "text-green-600" : "text-muted-foreground"
+            }`}>
+              <div className={`w-6 h-6 flex items-center justify-center rounded-full text-white ${
+                videoData.status === VideoStatus.GENERATING_AUDIO 
+                  ? "bg-blue-600" 
+                  : videoData.progress >= 60 ? "bg-green-600" : "bg-muted"
+              }`}>
+                {videoData.status === VideoStatus.GENERATING_AUDIO ? "⟳" : "3"}
               </div>
               <span>Creating voiceover audio</span>
             </div>
-            <div className={`flex items-center gap-3 ${videoData.progress >= 70 ? "text-green-600" : "text-muted-foreground"}`}>
-              <div className={`w-6 h-6 flex items-center justify-center rounded-full text-white ${videoData.progress >= 70 ? "bg-green-600" : "bg-muted"}`}>
-                4
+            
+            <div className={`flex items-center gap-3 ${
+              videoData.status === VideoStatus.GENERATING_SUBTITLES || 
+              videoData.status === VideoStatus.COMPOSING_VIDEO || 
+              videoData.status === VideoStatus.UPLOADING
+                ? "text-muted-foreground" 
+                : videoData.progress >= 75 ? "text-green-600" : "text-muted-foreground"
+            }`}>
+              <div className={`w-6 h-6 flex items-center justify-center rounded-full text-white ${
+                videoData.status === VideoStatus.GENERATING_SUBTITLES 
+                  ? "bg-blue-600" 
+                  : videoData.progress >= 75 ? "bg-green-600" : "bg-muted"
+              }`}>
+                {videoData.status === VideoStatus.GENERATING_SUBTITLES ? "⟳" : "4"}
               </div>
               <span>Adding subtitles</span>
             </div>
-            <div className={`flex items-center gap-3 ${videoData.progress >= 80 ? "text-green-600" : "text-muted-foreground"}`}>
-              <div className={`w-6 h-6 flex items-center justify-center rounded-full text-white ${videoData.progress >= 80 ? "bg-green-600" : "bg-muted"}`}>
-                5
+            
+            <div className={`flex items-center gap-3 ${
+              videoData.status === VideoStatus.COMPOSING_VIDEO || 
+              videoData.status === VideoStatus.UPLOADING
+                ? "text-muted-foreground" 
+                : videoData.progress >= 90 ? "text-green-600" : "text-muted-foreground"
+            }`}>
+              <div className={`w-6 h-6 flex items-center justify-center rounded-full text-white ${
+                videoData.status === VideoStatus.COMPOSING_VIDEO || videoData.status === VideoStatus.UPLOADING
+                  ? "bg-blue-600" 
+                  : videoData.progress >= 90 ? "bg-green-600" : "bg-muted"
+              }`}>
+                {videoData.status === VideoStatus.COMPOSING_VIDEO || videoData.status === VideoStatus.UPLOADING ? "⟳" : "5"}
               </div>
               <span>Composing final video</span>
             </div>
