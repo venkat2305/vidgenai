@@ -511,14 +511,27 @@ async def get_media_duration(path: str) -> float:
 
 
 async def run_ffmpeg(cmd: List[str]) -> Tuple[bytes, bytes]:
-  """
-  Run an ffmpeg command asynchronously.
-  """
+  # proc = await asyncio.create_subprocess_exec(
+  #   *cmd,
+  #   stdout=asyncio.subprocess.PIPE,
+  #   stderr=asyncio.subprocess.PIPE
+  # )
+  # out, err = await proc.communicate()
+  cmd = cmd + ["-nostats", "-progress", "pipe:1"]
   proc = await asyncio.create_subprocess_exec(
     *cmd,
     stdout=asyncio.subprocess.PIPE,
     stderr=asyncio.subprocess.PIPE
   )
+
+  # Read ffmpeg's progress lines in real time
+  while True:
+    line = await proc.stdout.readline()
+    if not line:
+      break
+    text = line.decode().strip()
+    print(f"[FFMPEG] {text}")          # ← prints every progress line
+
   out, err = await proc.communicate()
   if proc.returncode != 0:
     raise Exception(
