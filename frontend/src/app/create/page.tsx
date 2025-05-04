@@ -169,7 +169,7 @@ export default function CreatePage() {
               </select>
             </div>
             
-            <div className="space-y-2">
+            {/* <div className="space-y-2">
               <label htmlFor="title" className="text-sm font-medium">Title (Optional)</label>
               <input
                 type="text"
@@ -180,9 +180,9 @@ export default function CreatePage() {
                 placeholder="e.g., Michael Jordan's Rise to Fame"
                 className="w-full px-3 py-2 border rounded-md"
               />
-            </div>
+            </div> */}
             
-            <div className="space-y-2">
+            {/* <div className="space-y-2">
               <label htmlFor="description" className="text-sm font-medium">Description (Optional)</label>
               <textarea
                 id="description"
@@ -193,7 +193,7 @@ export default function CreatePage() {
                 className="w-full px-3 py-2 border rounded-md"
                 rows={3}
               />
-            </div>
+            </div> */}
             
             <div className="space-y-2">
               <label htmlFor="focus" className="text-sm font-medium">Content Focus</label>
