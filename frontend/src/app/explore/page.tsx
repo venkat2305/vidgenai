@@ -16,6 +16,7 @@ export default function ExplorePage() {
   const [mutedVideos, setMutedVideos] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [playing, setPlaying] = useState<Record<string, boolean>>({});
+  const [audioLoading, setAudioLoading] = useState<Record<string, boolean>>({});
   const [activeReelId, setActiveReelId] = useState<string | null>(null);
   const [skip, setSkip] = useState(0);
   const LIMIT = 10;
@@ -24,6 +25,10 @@ export default function ExplorePage() {
   useEffect(() => {
     // Fetch videos when component mounts
     loadInitialVideos();
+  }, []);
+
+  const handleAudioLoading = useCallback((reelId: string, isLoading: boolean) => {
+    setAudioLoading((prev) => ({ ...prev, [reelId]: isLoading }));
   }, []);
 
   const loadInitialVideos = async () => {
@@ -41,6 +46,13 @@ export default function ExplorePage() {
         initialMutedState[video.id] = false;
       });
       setMutedVideos(initialMutedState);
+
+      // Initialize audio loading state
+      const initialAudioLoadingState: Record<string, boolean> = {};
+      videos.forEach(video => {
+        initialAudioLoadingState[video.id] = true;
+      });
+      setAudioLoading(initialAudioLoadingState);
       
       setSkip(videos.length);
       setLoading(false);
@@ -73,6 +85,13 @@ export default function ExplorePage() {
         newMutedState[video.id] = false;
       });
       setMutedVideos(newMutedState);
+
+      // Initialize new audio loading state
+      const newAudioLoadingState = { ...audioLoading };
+      videos.forEach(video => {
+        newAudioLoadingState[video.id] = true;
+      });
+      setAudioLoading(newAudioLoadingState);
       
       setReels((prev) => [...prev, ...videos]);
       setSkip(skip + videos.length);
@@ -309,6 +328,12 @@ export default function ExplorePage() {
             id={reel.id}
             className="reel-container snap-start snap-always h-[calc(100vh-4rem)] w-full flex items-center justify-center relative"
           >
+            {/* Audio loading overlay for individual reel */}
+            {audioLoading[reel.id] && (
+              <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-30">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white" />
+              </div>
+            )}
             <Card className="w-full h-full max-w-md mx-auto overflow-hidden relative">
               {reel.video_url ? (
                 <video
@@ -321,6 +346,8 @@ export default function ExplorePage() {
                   autoPlay={playing[reel.id] || false}
                   loop
                   controls={false}
+                  onWaiting={() => handleAudioLoading(reel.id, true)}
+                  onCanPlay={() => handleAudioLoading(reel.id, false)}
                   muted={mutedVideos[reel.id]}
                   playsInline
                 />
