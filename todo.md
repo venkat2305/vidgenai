@@ -16,4 +16,5 @@
 16. scroll means go to next reel, mobile responsive
 17. play pause button.
 <!-- 18. when we click on unmute button on a reel in explore page we are essentially opening a new page right, lets dont do that instead simply unmute and play the audio.  -->
-19. we are using groq, gemini clients many where on the code base, do we create once and use it everywhere, would it improve any perf? 
+19. we are using groq, gemini clients many where on the code base, do we create once and use it everywhere, would it improve any perf?
+20. store times taken for different stages. 

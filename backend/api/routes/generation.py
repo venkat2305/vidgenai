@@ -108,7 +108,7 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
         # 4. Generate subtitles
         await update_video_status(video_id, VideoStatus.GENERATING_SUBTITLES, 70)
         subtitle_path = await generate_subtitles(script, audio_path)
-        subtitle_url = await upload_to_s3(subtitle_path, f"{video_id}.srt")
+        await upload_to_s3(subtitle_path, f"{video_id}.srt")
 
         # 5. Compose video with the specified aspect ratio and effects
         await update_video_status(video_id, VideoStatus.COMPOSING_VIDEO, 80)
@@ -147,28 +147,15 @@ async def create_video_generation(
     apply_effects: bool = Query(True, description="Apply visual effects (zoom/pan) to images"),
     use_contextual_images: bool = Query(False, description="Use context-aware images that change with the script content")
 ):
-    """
-    Start the generation of a new video.
-    
-    Args:
-        video_data: Video creation data
-        background_tasks: FastAPI background tasks
-        aspect_ratio: Desired aspect ratio for the video (default: 9:16 for short-form vertical video)
-        apply_effects: Whether to apply visual effects like zoom and pan to make the video more dynamic
-        use_contextual_images: Whether to use context-aware images that change as the script progresses
-    """
-    # Create a new video document
     video = VideoModel(
         celebrity_name=video_data.celebrity_name,
         title=video_data.title or f"{video_data.celebrity_name}'s History",
         description=video_data.description or f"The history and achievements of {video_data.celebrity_name}"
     )
 
-    # Insert into database
     videos_collection = mongodb.db.videos
     await videos_collection.insert_one(video.dict())
 
-    # Start background task with aspect ratio, effects options, and contextual images flag
     background_tasks.add_task(generate_video_background, video.id, aspect_ratio, apply_effects, use_contextual_images)
 
     return video
@@ -176,9 +163,6 @@ async def create_video_generation(
 
 @router.get("/{job_id}", response_model=VideoModel)
 async def get_generation_status(job_id: str):
-    """
-    Check the status of a video generation job.
-    """
     videos_collection = mongodb.db.videos
     video = await videos_collection.find_one({"id": job_id})
 
