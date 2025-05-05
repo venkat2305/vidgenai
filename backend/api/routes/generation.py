@@ -3,7 +3,7 @@ from db.mongodb import mongodb
 from db.models.video import VideoCreate, VideoModel, VideoStatus
 from services.script.script_generator import generate_script
 from services.media.image_fetcher import fetch_images, fetch_contextual_images
-from services.audio.audio_generator import generate_audio
+from services.audio.audio_generator import AudioGenerator
 from services.subtitles.subtitle_generator import generate_subtitles
 from services.video.composer import compose_video
 from services.s3.storage import upload_to_s3
@@ -70,7 +70,7 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
         else:
             # Use the original image fetching approach
             image_data = await fetch_images(video["celebrity_name"], script, aspect_ratio=aspect_ratio)
-            
+
         # Extract just the URLs for database storage
         image_urls = [img["url"] for img in image_data]
         await update_video_status(video_id, VideoStatus.FETCHING_IMAGES, 40, image_urls=image_urls)
@@ -80,7 +80,8 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
         audio_path = None
         try:
             await update_video_status(video_id, VideoStatus.GENERATING_AUDIO, 50)
-            audio_path = await generate_audio(script)
+            audio_generator = AudioGenerator()
+            audio_path = await audio_generator.generate_audio(script)
             print("Audio path:", audio_path)
 
             # Don't halt the entire process on upload failure

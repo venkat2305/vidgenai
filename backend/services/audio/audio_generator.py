@@ -4,60 +4,55 @@ import logging
 import aiohttp
 from core.config import settings
 
-logger = logging.getLogger("vidgenai.audio_generator")
 
+class AudioGenerator:
+    def __init__(self):
+        self.logger = logging.getLogger("vidgenai.audio_generator")
+        self.temp_dir = tempfile.gettempdir()
 
-async def generate_audio(script: str) -> str:
-    try:
-        # Create a temporary file for the audio
-        temp_dir = tempfile.gettempdir()
-        audio_filename = os.path.join(temp_dir, f"audio_{hash(script)}.wav")
-
-        # Use Groq API for text-to-speech
+    async def _generate_with_groq(self, script: str, audio_filename: str) -> str:
         async with aiohttp.ClientSession() as session:
             headers = {
                 "Authorization": f"Bearer {settings.GROQ_API_KEY}",
                 "Content-Type": "application/json"
             }
-
             payload = {
                 "model": "playai-tts",
                 "input": script,
                 "voice": "Arista-PlayAI",
                 "response_format": "wav"
             }
-
             async with session.post(
-                "https://api.groq.com/openai/v1/audio/speech", 
+                "https://api.groq.com/openai/v1/audio/speech",
                 headers=headers,
-                json=payload
+                json=payload,
             ) as response:
                 if response.status == 200:
-                    # Save the audio content to a file
                     with open(audio_filename, "wb") as f:
                         f.write(await response.read())
-
-                    logger.info(f"Generated audio file: {audio_filename}")
+                    self.logger.info(f"Generated audio file: {audio_filename}")
                     return audio_filename
                 else:
                     error_text = await response.text()
-                    logger.error(f"Error generating audio: {response.status} - {error_text}")
+                    self.logger.error(
+                        f"Error generating audio: {response.status} - {error_text}"
+                    )
                     raise Exception(f"Failed to generate audio: {error_text}")
 
-    except Exception as e:
-        logger.error(f"Error in audio generation: {str(e)}", exc_info=True)
+    async def _generate_with_edge_tts(self, script: str, audio_filename: str) -> str:
+        import edge_tts
 
-        # Fallback to edge-tts if Groq fails
+        voice = "en-US-GuyNeural"
+        communicate = edge_tts.Communicate(script, voice)
+        await communicate.save(audio_filename)
+        self.logger.info(f"Generated audio file with edge-tts: {audio_filename}")
+        return audio_filename
+
+    async def generate_audio(self, script: str) -> str:
+        audio_filename = os.path.join(self.temp_dir, f"audio_{hash(script)}.wav")
         try:
-            logger.info("Falling back to edge-tts for audio generation")
-            import edge_tts
-
-            communicate = edge_tts.Communicate(script, "en-US-GuyNeural")
-            await communicate.save(audio_filename)
-
-            logger.info(f"Generated audio file with edge-tts: {audio_filename}")
-            return audio_filename
-
-        except Exception as fallback_error:
-            logger.error(f"Fallback audio generation failed: {str(fallback_error)}", exc_info=True)
-            raise Exception(f"Failed to generate audio: {str(e)}")
+            return await self._generate_with_edge_tts(script, audio_filename)
+        except Exception as e:
+            self.logger.error(f"Error in audio generation: {str(e)}", exc_info=True)
+            self.logger.info("Falling back to edge-tts for audio generation")
+            return await self._generate_with_edge_tts(script, audio_filename)
