@@ -313,7 +313,7 @@ async def apply_visual_effects(image_paths: List[str], durations: List[float], w
                 "-c:v", "libx264",
                 "-pix_fmt", "yuv420p",
                 "-preset", "fast",
-                "-crf", "23",
+                "-crf", "28",
                 "-r", str(fps),
                 output_video
             ]
@@ -349,9 +349,9 @@ async def generate_final_video_from_clips(concat_path, audio_path, subtitle_path
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
         "-preset", "medium",
-        "-b:v", "2500k", 
+        "-b:v", "800k", 
         "-c:a", "aac",
-        "-b:a", "192k",
+        "-b:a", "64k",
         "-vf", vf_filters,
         "-shortest",
         output_path
@@ -441,9 +441,9 @@ async def generate_final_video(concat_path, audio_path, subtitle_path, width, he
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
         "-preset", "medium",
-        "-b:v", "2500k", 
+        "-b:v", "800k", 
         "-c:a", "aac",
-        "-b:a", "192k",
+        "-b:a", "64k",
         "-vf", vf_filters,
         "-shortest",
         output_path
@@ -453,16 +453,14 @@ async def generate_final_video(concat_path, audio_path, subtitle_path, width, he
 
 
 def get_video_dimensions(aspect_ratio: str) -> Tuple[int, int]:
-    """Get video dimensions based on aspect ratio."""
-    if aspect_ratio == "9:16":  # Vertical video for shorts/reels
-        return 720, 1280  # 720x1280 (9:16)
-    elif aspect_ratio == "16:9":  # Standard widescreen
-        return 1280, 720  # 1280x720 (16:9)
-    elif aspect_ratio == "1:1":  # Square video
-        return 1080, 1080  # 1080x1080 (1:1)
+    if aspect_ratio == "9:16":
+        return 480, 854
+    elif aspect_ratio == "16:9":
+        return 854, 480
+    elif aspect_ratio == "1:1":
+        return 480, 480
     else:
-        # Default to 9:16 for short-form vertical video
-        return 720, 1280
+        return 480, 854
 
 
 async def download_images(image_urls: List[str]) -> List[str]:
