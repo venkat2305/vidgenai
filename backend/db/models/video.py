@@ -33,7 +33,7 @@ class VideoModel(BaseModel):
     duration: Optional[float] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    
+
     class Config:
         schema_extra = {
             "example": {

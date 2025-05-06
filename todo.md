@@ -17,4 +17,8 @@
 17. play pause button.
 <!-- 18. when we click on unmute button on a reel in explore page we are essentially opening a new page right, lets dont do that instead simply unmute and play the audio.  -->
 19. we are using groq, gemini clients many where on the code base, do we create once and use it everywhere, would it improve any perf?
-20. store times taken for different stages. 
+20. store times taken for different stages.
+21. optimze the backend. [link](https://t3.chat/chat/3fe35d86-e144-4081-b9da-9cec19e7c076)
+22. no need for api/routes. lets just have routes folder.
+23. using async clients, requests wherever possible for network requests. research if we can use async in other areas of the application. 
+24. put models names in a proper way, remove them from env. 

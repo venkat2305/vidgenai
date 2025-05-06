@@ -15,7 +15,7 @@ groq_client = Groq(api_key=settings.GROQ_API_KEY)
 async def fetch_images(celebrity_name: str, script: str, num_images: int = 8, aspect_ratio: str = "9:16") -> List[Dict[str, Any]]:
     """
     Fetch relevant images for a sports celebrity using SERP API.
-    
+
     Args:
         celebrity_name: Name of the sports celebrity
         script: The generated script to extract relevant keywords

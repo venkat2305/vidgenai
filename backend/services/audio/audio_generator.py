@@ -19,7 +19,7 @@ class AudioGenerator:
             payload = {
                 "model": "playai-tts",
                 "input": script,
-                "voice": "Arista-PlayAI",
+                "voice": "Chip-PlayAI",
                 "response_format": "wav"
             }
             async with session.post(
