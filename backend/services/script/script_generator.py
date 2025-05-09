@@ -130,7 +130,6 @@ class PerplexityScriptGenerator(ScriptGenerator):
             raise
 
 
-
 class ScriptGeneratorFactory:
     @staticmethod
     def get_generator(model_type: str) -> ScriptGenerator:

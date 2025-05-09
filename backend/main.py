@@ -29,6 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -38,11 +39,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.add_event_handler("startup", connect_to_mongo)
 app.add_event_handler("shutdown", close_mongo_connection)
 
-# Include routers
-app.include_router(video.router, prefix="/api/videos", tags=["videos"])
-app.include_router(generation.router, prefix="/api/generation", tags=["generation"])
 
 # Root endpoint
 @app.get("/")
 async def root():
     return {"message": "Welcome to VidGenAI - Sports Celebrity History Reels Generator"}
+
+
+# Include routers
+app.include_router(video.router, prefix="/api/videos", tags=["videos"])
+app.include_router(generation.router, prefix="/api/generation", tags=["generation"])

@@ -93,6 +93,7 @@ class PanEffect(VideoEffect):
             
         return result
 
+
 def get_random_effect() -> VideoEffect:
     """Return a random zoom effect with appropriate parameters for 9:16 videos."""
     import random
