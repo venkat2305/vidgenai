@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from db.mongodb import mongodb
 from db.models.video import VideoCreate, VideoModel, VideoStatus
-from services.media.image_fetcher import fetch_images
+
 from services.video.composer import compose_video
 from services.s3.storage import upload_to_s3
 import logging
@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from services.script.script_generator import ScriptGenerationService
 from services.audio.audio_generator import AudioGenerator
 from services.subtitles.subtitle_generator import SubtitleGenerator
+from services.media.image_fetcher import ImageFetchService
+
 
 router = APIRouter()
 logger = logging.getLogger("vidgenai.generation")
@@ -58,7 +60,13 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
         # 2. Fetch images with metadata for the specified aspect ratio
         await update_video_status(video_id, VideoStatus.FETCHING_IMAGES, 30)
 
-        image_data = await fetch_images(video["celebrity_name"], script, aspect_ratio=aspect_ratio)
+        image_fetch_service = ImageFetchService()
+        image_data = await image_fetch_service.fetch_images(
+            video["celebrity_name"],
+            script,
+            num_images=8,  # or whatever number you want
+            aspect_ratio=aspect_ratio
+        )
         # Extract just the URLs for database storage
         image_urls = [img["url"] for img in image_data]
         await update_video_status(video_id, VideoStatus.FETCHING_IMAGES, 40, image_urls=image_urls)

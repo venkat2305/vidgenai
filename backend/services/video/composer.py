@@ -10,137 +10,168 @@ import numpy as np
 import cv2
 from typing import List, Tuple, Dict, Any, Optional
 from services.video.effects import get_random_effect, VideoEffect, ZoomEffect, PanEffect
+import time
 
 logger = logging.getLogger("vidgenai.video_composer")
 
 
+import time
+
 async def compose_video(
-  script: str,
-  image_data: List[Dict[str, Any]],
-  audio_path: str,
-  subtitle_path: str,
-  video_aspect: str = "9:16",
-  apply_effects: bool = True
+    script: str,
+    image_data: List[Dict[str, Any]],
+    audio_path: str,
+    subtitle_path: str,
+    video_aspect: str = "9:16",
+    apply_effects: bool = True
 ) -> Tuple[str, str, float]:
-  """
-  Compose a video from images, audio, and subtitles using ffmpeg.
-  Returns (video_path, thumbnail_path, duration).
-  """
-  try:
-    temp_dir = tempfile.gettempdir()
-    video_filename = os.path.join(
-      temp_dir, f"video_{hash(script)}.mp4"
-    )
-    thumbnail_filename = os.path.join(
-      temp_dir, f"thumbnail_{hash(script)}.jpg"
-    )
-    
-    # Parse video dimensions from aspect ratio
-    video_dimensions = get_video_dimensions(video_aspect)
-    video_width, video_height = video_dimensions
-    logger.info(f"Creating {video_width}x{video_height} video with {video_aspect} aspect ratio")
-
-    # 1) Download images and prepare them for the aspect ratio
-    # Extract image URLs from the image data
-    image_urls = [img["url"] for img in image_data] if isinstance(image_data[0], dict) else image_data
-    
-    # Prevent duplicate images by removing repeated URLs
-    unique_image_urls = []
-    for url in image_urls:
-      if url not in unique_image_urls:
-        unique_image_urls.append(url)
-    
-    # If we removed too many duplicates, we'll use some duplicates but ensure they're not consecutive
-    if len(unique_image_urls) < min(5, len(image_urls) // 2):
-      logger.warning(f"Not enough unique images ({len(unique_image_urls)}). Will use some duplicates non-consecutively.")
-      image_urls_arranged = arrange_images_without_consecutive_duplicates(image_urls)
-    else:
-      # Use unique images, potentially repeating if needed but not consecutively
-      image_urls_arranged = arrange_images_without_consecutive_duplicates(unique_image_urls)
-      
-      # If we need more images to match the audio duration, add more non-consecutive duplicates
-      if len(image_urls_arranged) < 8:  # Ensure we have at least 8 images for a decent video
-        while len(image_urls_arranged) < 8 and len(image_urls_arranged) < len(image_urls):
-          for url in unique_image_urls:
-            if len(image_urls_arranged) >= 8:
-              break
-            if image_urls_arranged[-1] != url:  # Avoid consecutive duplicates
-              image_urls_arranged.append(url)
-    
-    logger.info(f"Using {len(image_urls_arranged)} images after duplicate handling")
-    
-    image_paths = await download_images(image_urls_arranged)
-    if not image_paths:
-      raise Exception("No valid images downloaded")
-
-    # 2) Pre-process images to fit the target aspect ratio without stretching
-    processed_paths = await process_images_for_aspect_ratio(image_paths, video_width, video_height)
-    if not processed_paths:
-      raise Exception("Image processing failed")
-
-    # 3) Probe audio duration
-    total_duration = await get_media_duration(audio_path)
-
-    # 4) Compute per-image durations using equal distribution
-    per = total_duration / len(processed_paths)
-    durations = [per] * len(processed_paths)
-    durations[-1] = total_duration - sum(durations[:-1])  # adjust last slice to hit exact total
-
-    # 5) Apply effects to create dynamic sequences if requested
-    if apply_effects:
-      processed_paths = await apply_visual_effects(processed_paths, durations, video_width, video_height)
-
-    # 6) Build ffmpeg concat list
-    concat_path = os.path.join(
-      temp_dir, f"concat_{hash(script)}.txt"
-    )
-    
-    # If we're using effects, we've already created video segments
-    if apply_effects:
-      with open(concat_path, "w", encoding="utf-8") as f:
-        for clip_path in processed_paths:
-          f.write(f"file '{clip_path}'\n")
-      
-      # Generate the final video
-      await generate_final_video_from_clips(concat_path, audio_path, subtitle_path, video_width, video_height, video_filename)
-    else:
-      # Traditional image slideshow approach
-      with open(concat_path, "w", encoding="utf-8") as f:
-        for img, dur in zip(processed_paths, durations):
-          f.write(f"file '{img}'\n")
-          f.write(f"duration {dur}\n")
-        # repeat last image to ensure its duration is honored
-        f.write(f"file '{processed_paths[-1]}'\n")
-      
-      # Generate the final video
-      await generate_final_video(concat_path, audio_path, subtitle_path, video_width, video_height, video_filename)
-
-    # 7) Make thumbnail from first image
-    if isinstance(processed_paths[0], str) and processed_paths[0].endswith(('.jpg', '.png', '.jpeg')):
-      shutil.copy(processed_paths[0], thumbnail_filename)
-    else:
-      # If we're using video segments for effects, extract first frame
-      cap = cv2.VideoCapture(processed_paths[0])
-      ret, frame = cap.read()
-      if ret:
-        cv2.imwrite(thumbnail_filename, frame)
-        cap.release()
-      else:
-        # Fallback to blank thumbnail
-        blank = np.zeros((video_height, video_width, 3), dtype=np.uint8)
-        cv2.putText(
-          blank, "No Thumbnail", (video_width // 4, video_height // 2),
-          cv2.FONT_HERSHEY_SIMPLEX, 1,
-          (255, 255, 255), 2
+    """
+    Compose a video from images, audio, and subtitles using ffmpeg.
+    Returns (video_path, thumbnail_path, duration).
+    """
+    try:
+        temp_dir = tempfile.gettempdir()
+        video_filename = os.path.join(
+            temp_dir, f"video_{hash(script)}.mp4"
         )
-        cv2.imwrite(thumbnail_filename, blank)
+        thumbnail_filename = os.path.join(
+            temp_dir, f"thumbnail_{hash(script)}.jpg"
+        )
 
-    logger.info(f"Video composition complete: {video_filename}")
-    return video_filename, thumbnail_filename, total_duration
+        # Step 1: Parse video dimensions from aspect ratio
+        t1_start = time.perf_counter()
+        video_dimensions = get_video_dimensions(video_aspect)
+        video_width, video_height = video_dimensions
+        t1_end = time.perf_counter()
+        logger.info(
+            f"Step 1: Parsed video dimensions {video_width}x{video_height} "
+            f"for aspect {video_aspect} in {t1_end - t1_start:.2f}s"
+        )
 
-  except Exception as e:
-    logger.error(f"Error composing video: {e}", exc_info=True)
-    raise Exception(f"Failed to compose video: {e}")
+        # Step 2: Download images and prepare them for the aspect ratio
+        t2_start = time.perf_counter()
+        image_urls = [img["url"] for img in image_data] if isinstance(image_data[0], dict) else image_data
+
+        unique_image_urls = []
+        for url in image_urls:
+            if url not in unique_image_urls:
+                unique_image_urls.append(url)
+
+        if len(unique_image_urls) < min(5, len(image_urls) // 2):
+            logger.warning(
+                f"Not enough unique images ({len(unique_image_urls)}). "
+                "Will use some duplicates non-consecutively."
+            )
+            image_urls_arranged = arrange_images_without_consecutive_duplicates(image_urls)
+        else:
+            image_urls_arranged = arrange_images_without_consecutive_duplicates(unique_image_urls)
+            if len(image_urls_arranged) < 8:
+                while len(image_urls_arranged) < 8 and len(image_urls_arranged) < len(image_urls):
+                    for url in unique_image_urls:
+                        if len(image_urls_arranged) >= 8:
+                            break
+                        if image_urls_arranged[-1] != url:
+                            image_urls_arranged.append(url)
+
+        logger.info(f"Using {len(image_urls_arranged)} images after duplicate handling")
+        t2_end = time.perf_counter()
+        logger.info(f"Step 2: Arranged image URLs in {t2_end - t2_start:.2f}s")
+
+        # Step 3: Download images
+        t3_start = time.perf_counter()
+        image_paths = await download_images(image_urls_arranged)
+        if not image_paths:
+            raise Exception("No valid images downloaded")
+        t3_end = time.perf_counter()
+        logger.info(f"Step 3: Downloaded images in {t3_end - t3_start:.2f}s")
+
+        # Step 4: Pre-process images to fit the target aspect ratio without stretching
+        t4_start = time.perf_counter()
+        processed_paths = await process_images_for_aspect_ratio(
+            image_paths, video_width, video_height
+        )
+        if not processed_paths:
+            raise Exception("Image processing failed")
+        t4_end = time.perf_counter()
+        logger.info(f"Step 4: Processed images for aspect ratio in {t4_end - t4_start:.2f}s")
+
+        # Step 5: Probe audio duration
+        t5_start = time.perf_counter()
+        total_duration = await get_media_duration(audio_path)
+        t5_end = time.perf_counter()
+        logger.info(f"Step 5: Probed audio duration in {t5_end - t5_start:.2f}s")
+
+        # Step 6: Compute per-image durations using equal distribution
+        t6_start = time.perf_counter()
+        per = total_duration / len(processed_paths)
+        durations = [per] * len(processed_paths)
+        durations[-1] = total_duration - sum(durations[:-1])
+        t6_end = time.perf_counter()
+        logger.info(f"Step 6: Computed per-image durations in {t6_end - t6_start:.2f}s")
+
+        # Step 7: Apply effects to create dynamic sequences if requested
+        t7_start = time.perf_counter()
+        if apply_effects:
+            processed_paths = await apply_visual_effects(
+                processed_paths, durations, video_width, video_height
+            )
+        t7_end = time.perf_counter()
+        logger.info(f"Step 7: Applied effects in {t7_end - t7_start:.2f}s")
+
+        # Step 8: Build ffmpeg concat list and generate video
+        t8_start = time.perf_counter()
+        concat_path = os.path.join(
+            temp_dir, f"concat_{hash(script)}.txt"
+        )
+
+        if apply_effects:
+            with open(concat_path, "w", encoding="utf-8") as f:
+                for clip_path in processed_paths:
+                    f.write(f"file '{clip_path}'\n")
+            await generate_final_video_from_clips(
+                concat_path, audio_path, subtitle_path,
+                video_width, video_height, video_filename
+            )
+        else:
+            with open(concat_path, "w", encoding="utf-8") as f:
+                for img, dur in zip(processed_paths, durations):
+                    f.write(f"file '{img}'\n")
+                    f.write(f"duration {dur}\n")
+                f.write(f"file '{processed_paths[-1]}'\n")
+            await generate_final_video(
+                concat_path, audio_path, subtitle_path,
+                video_width, video_height, video_filename
+            )
+        t8_end = time.perf_counter()
+        logger.info(f"Step 8: Generated video in {t8_end - t8_start:.2f}s")
+
+        # Step 9: Make thumbnail from first image
+        t9_start = time.perf_counter()
+        if isinstance(processed_paths[0], str) and processed_paths[0].endswith(('.jpg', '.png', '.jpeg')):
+            shutil.copy(processed_paths[0], thumbnail_filename)
+        else:
+            cap = cv2.VideoCapture(processed_paths[0])
+            ret, frame = cap.read()
+            if ret:
+                cv2.imwrite(thumbnail_filename, frame)
+                cap.release()
+            else:
+                blank = np.zeros((video_height, video_width, 3), dtype=np.uint8)
+                cv2.putText(
+                    blank, "No Thumbnail", (video_width // 4, video_height // 2),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1,
+                    (255, 255, 255), 2
+                )
+                cv2.imwrite(thumbnail_filename, blank)
+        t9_end = time.perf_counter()
+        logger.info(f"Step 9: Created thumbnail in {t9_end - t9_start:.2f}s")
+
+        logger.info(f"Video composition complete: {video_filename}")
+        return video_filename, thumbnail_filename, total_duration
+
+    except Exception as e:
+        logger.error(f"Error composing video: {e}", exc_info=True)
+        raise Exception(f"Failed to compose video: {e}")
 
 
 def arrange_images_without_consecutive_duplicates(image_urls: List[str]) -> List[str]:
@@ -449,12 +480,6 @@ async def get_media_duration(path: str) -> float:
 
 
 async def run_ffmpeg(cmd: List[str]) -> Tuple[bytes, bytes]:
-  # proc = await asyncio.create_subprocess_exec(
-  #   *cmd,
-  #   stdout=asyncio.subprocess.PIPE,
-  #   stderr=asyncio.subprocess.PIPE
-  # )
-  # out, err = await proc.communicate()
   cmd = cmd + ["-nostats", "-progress", "pipe:1"]
   proc = await asyncio.create_subprocess_exec(
     *cmd,

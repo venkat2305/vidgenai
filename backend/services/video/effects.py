@@ -13,7 +13,7 @@ class ZoomEffect(VideoEffect):
     def __init__(self, zoom_start: float = 1.0, zoom_end: float = 1.2):
         self.zoom_start = zoom_start
         self.zoom_end = zoom_end
-    
+
     def apply(self, frame, t, duration):
         """Apply zoom effect to frame."""
         h, w = frame.shape[:2]

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # API keys
     GROQ_API_KEY: Optional[str] = os.getenv("GROQ_API_KEY")
     SERP_API_KEY: Optional[str] = os.getenv("SERP_API_KEY")
+    BRAVE_API_KEY: Optional[str] = os.getenv("BRAVE_API_KEY")
     GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY")
     PERPLEXITY_API_KEY: Optional[str] = os.getenv("PERPLEXITY_API_KEY")
     ELEVENLABS_API_KEY: Optional[str] = os.getenv("ELEVENLABS_API_KEY")
