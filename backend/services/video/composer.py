@@ -15,8 +15,6 @@ import time
 logger = logging.getLogger("vidgenai.video_composer")
 
 
-import time
-
 async def compose_video(
     script: str,
     image_data: List[Dict[str, Any]],
@@ -319,7 +317,7 @@ async def generate_final_video_from_clips(concat_path, audio_path, subtitle_path
         "-map", "1:a",  # Audio from second input
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
-        "-preset", "medium",
+        "-preset", "ultrafast",
         "-b:v", "800k", 
         "-c:a", "aac",
         "-b:a", "64k",
@@ -411,7 +409,7 @@ async def generate_final_video(concat_path, audio_path, subtitle_path, width, he
         "-map", "1:a",  # Audio from second input
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
-        "-preset", "medium",
+        "-preset", "ultrafast",
         "-b:v", "800k", 
         "-c:a", "aac",
         "-b:a", "64k",
