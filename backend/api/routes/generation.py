@@ -17,7 +17,14 @@ router = APIRouter()
 logger = logging.getLogger("vidgenai.generation")
 
 
-async def update_video_status(video_id: str, status: VideoStatus, progress: int = None, error_message: str = None, **kwargs):
+async def update_video_status(
+    video_id: str,
+    status: VideoStatus,
+    progress: int = None,
+    error_message: str = None,
+    step_timings: dict = None,
+    **kwargs
+):
     """ Update the status and other fields of a video in the database """
     videos_collection = mongodb.db.videos
 
@@ -32,6 +39,10 @@ async def update_video_status(video_id: str, status: VideoStatus, progress: int 
     if error_message:
         update_data["error_message"] = error_message
 
+    if step_timings:
+        for step, duration in step_timings.items():
+            update_data[f"step_timings.{step}"] = duration
+
     # Add any additional fields from kwargs
     update_data.update(kwargs)
 
@@ -42,7 +53,7 @@ async def update_video_status(video_id: str, status: VideoStatus, progress: int 
 
 
 async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", apply_effects: bool = True, use_contextual_images: bool = True):
-    """Background task to generate a video."""
+    """Background task to generate a video with timing measurements for each step."""
     try:
         videos_collection = mongodb.db.videos
         video = await videos_collection.find_one({"id": video_id})
@@ -51,89 +62,157 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
             logger.error(f"Video with ID {video_id} not found")
             return
 
+        # Initialize timings dict
+        step_timings = {}
+
         # 1. Generate script
-        script_generator = ScriptGenerationService()
         await update_video_status(video_id, VideoStatus.GENERATING_SCRIPT, 10)
+        start_time = datetime.now(timezone.utc)
+        script_generator = ScriptGenerationService()
         script = await script_generator.generate_script(video["celebrity_name"])
-        await update_video_status(video_id, VideoStatus.GENERATING_SCRIPT, 20, script=script)
+        step_timings["script_generation"] = (datetime.now(timezone.utc) - start_time).total_seconds()
+        await update_video_status(
+            video_id,
+            VideoStatus.GENERATING_SCRIPT,
+            20,
+            script=script,
+            step_timings=step_timings
+        )
 
-        # 2. Fetch images with metadata for the specified aspect ratio
+        # 2. Fetch images with metadata
         await update_video_status(video_id, VideoStatus.FETCHING_IMAGES, 30)
-
+        start_time = datetime.now(timezone.utc)
         image_fetch_service = ImageFetchService()
         image_data = await image_fetch_service.fetch_images(
             video["celebrity_name"],
             script,
-            num_images=8,  # or whatever number you want
+            num_images=8,
             aspect_ratio=aspect_ratio
         )
-        # Extract just the URLs for database storage
         image_urls = [img["url"] for img in image_data]
-        await update_video_status(video_id, VideoStatus.FETCHING_IMAGES, 40, image_urls=image_urls)
+        step_timings["image_fetching"] = (datetime.now(timezone.utc) - start_time).total_seconds()
+        await update_video_status(
+            video_id,
+            VideoStatus.FETCHING_IMAGES,
+            40,
+            image_urls=image_urls,
+            step_timings=step_timings
+        )
 
         # 3. Generate audio
+        await update_video_status(video_id, VideoStatus.GENERATING_AUDIO, 50)
+        start_time = datetime.now(timezone.utc)
         audio_url = None
         audio_path = None
         try:
-            await update_video_status(video_id, VideoStatus.GENERATING_AUDIO, 50)
             audio_generator = AudioGenerator()
             audio_path = await audio_generator.generate_audio(script)
-            print("Audio path:", audio_path)
-
-            # Don't halt the entire process on upload failure
+            
+            # Upload audio (optional)
+            upload_start = datetime.now(timezone.utc)
             try:
-                # audio_url = await upload_to_s3(audio_path, f"{video_id}.mp3")
-                await update_video_status(video_id, VideoStatus.GENERATING_AUDIO, 60, audio_url=audio_url)
+                audio_url = await upload_to_s3(audio_path, f"{video_id}.mp3")
+                step_timings["audio_upload"] = (datetime.now(timezone.utc) - upload_start).total_seconds()
             except Exception as upload_error:
-                logger.error(f"Failed to upload audio to S3/R2: {str(upload_error)}. Continuing with local audio file.")
-                await update_video_status(
-                    video_id, 
-                    VideoStatus.GENERATING_AUDIO, 
-                    60,
-                    error_message=f"Audio generated but upload failed: {str(upload_error)}"
-                )
-        except Exception as audio_error:
-            logger.error(f"Error in audio generation: {str(audio_error)}")
+                logger.error(f"Audio upload failed: {str(upload_error)}")
+                step_timings["audio_upload_failed"] = (datetime.now(timezone.utc) - upload_start).total_seconds()
+            
+            step_timings["audio_generation"] = (datetime.now(timezone.utc) - start_time).total_seconds()
             await update_video_status(
                 video_id,
-                VideoStatus.FAILED, 
-                error_message=f"Audio generation failed: {str(audio_error)}"
+                VideoStatus.GENERATING_AUDIO,
+                60,
+                audio_url=audio_url,
+                step_timings=step_timings
+            )
+        except Exception as audio_error:
+            step_timings["audio_generation_failed"] = (datetime.now(timezone.utc) - start_time).total_seconds()
+            logger.error(f"Audio generation failed: {str(audio_error)}")
+            await update_video_status(
+                video_id,
+                VideoStatus.FAILED,
+                error_message=f"Audio generation failed: {str(audio_error)}",
+                step_timings=step_timings
             )
             return
 
         # 4. Generate subtitles
         await update_video_status(video_id, VideoStatus.GENERATING_SUBTITLES, 70)
+        start_time = datetime.now(timezone.utc)
         subtitle_generator = SubtitleGenerator()
         subtitle_path = await subtitle_generator.generate(script, audio_path)
-        await upload_to_s3(subtitle_path, f"{video_id}.srt")
-
-        # 5. Compose video with the specified aspect ratio and effects
-        await update_video_status(video_id, VideoStatus.COMPOSING_VIDEO, 80)
-        video_path, thumbnail_path, duration = await compose_video(
-            script, image_data, audio_path, subtitle_path, 
-            video_aspect=aspect_ratio, apply_effects=apply_effects
+        
+        # Upload subtitles
+        upload_start = datetime.now(timezone.utc)
+        try:
+            await upload_to_s3(subtitle_path, f"{video_id}.srt")
+            step_timings["subtitle_upload"] = (datetime.now(timezone.utc) - upload_start).total_seconds()
+        except Exception as upload_error:
+            logger.error(f"Subtitle upload failed: {str(upload_error)}")
+            step_timings["subtitle_upload_failed"] = (datetime.now(timezone.utc) - upload_start).total_seconds()
+        
+        step_timings["subtitle_generation"] = (datetime.now(timezone.utc) - start_time).total_seconds()
+        await update_video_status(
+            video_id,
+            VideoStatus.GENERATING_SUBTITLES,
+            80,
+            step_timings=step_timings
         )
 
-        # 6. Upload to S3
+        # 5. Compose video
+        await update_video_status(video_id, VideoStatus.COMPOSING_VIDEO, 80)
+        start_time = datetime.now(timezone.utc)
+        video_path, thumbnail_path, duration = await compose_video(
+            script, image_data, audio_path, subtitle_path,
+            video_aspect=aspect_ratio, apply_effects=apply_effects
+        )
+        step_timings["video_composition"] = (datetime.now(timezone.utc) - start_time).total_seconds()
+        await update_video_status(
+            video_id,
+            VideoStatus.COMPOSING_VIDEO,
+            90,
+            step_timings=step_timings
+        )
+
+        # 6. Upload final assets
         await update_video_status(video_id, VideoStatus.UPLOADING, 90)
-        video_url = await upload_to_s3(video_path, f"{video_id}-video.mp4")
-        thumbnail_url = await upload_to_s3(thumbnail_path, f"{video_id}-thumbnail.jpg")
+        start_time = datetime.now(timezone.utc)
+        try:
+            video_url = await upload_to_s3(video_path, f"{video_id}-video.mp4")
+            thumbnail_url = await upload_to_s3(thumbnail_path, f"{video_id}-thumbnail.jpg")
+            step_timings["final_upload"] = (datetime.now(timezone.utc) - start_time).total_seconds()
+        except Exception as upload_error:
+            logger.error(f"Final upload failed: {str(upload_error)}")
+            step_timings["final_upload_failed"] = (datetime.now(timezone.utc) - start_time).total_seconds()
+            raise
 
         # 7. Mark as completed
+        total_time = sum(v for k, v in step_timings.items() if not k.endswith("_failed"))
+        step_timings["total_processing_time"] = total_time
+        
         await update_video_status(
             video_id,
             VideoStatus.COMPLETED,
             100,
             video_url=video_url,
             thumbnail_url=thumbnail_url,
-            duration=duration
+            duration=duration,
+            step_timings=step_timings
         )
 
-        logger.info(f"Video generation completed for {video_id}")
+        logger.info(f"Video generation completed for {video_id} in {total_time:.2f} seconds")
 
     except Exception as e:
         logger.error(f"Error generating video {video_id}: {str(e)}", exc_info=True)
-        await update_video_status(video_id, VideoStatus.FAILED, error_message=str(e))
+        if "step_timings" not in locals():
+            step_timings = {}
+        step_timings["error_occurred_at"] = datetime.now(timezone.utc).isoformat()
+        await update_video_status(
+            video_id,
+            VideoStatus.FAILED,
+            error_message=str(e),
+            step_timings=step_timings
+        )
 
 
 @router.post("/", response_model=VideoModel)

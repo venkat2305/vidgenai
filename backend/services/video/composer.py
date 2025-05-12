@@ -248,7 +248,7 @@ async def apply_visual_effects(image_paths: List[str], durations: List[float], w
         
         # Create output path for this segment
         output_video = os.path.join(temp_dir, f"effect_segment_{i}.mp4")
-        
+
         try:
             # Read the image
             img = cv2.imread(img_path)
@@ -256,23 +256,23 @@ async def apply_visual_effects(image_paths: List[str], durations: List[float], w
                 logger.warning(f"Could not read image {img_path}. Using static image.")
                 video_segments.append(img_path)
                 continue
-            
+
             # Calculate frame count
             frame_count = int(fps * duration)
             if frame_count < 1:
                 frame_count = 1
-            
+
             # Create temporary frames directory
             frames_dir = os.path.join(temp_dir, f"frames_{i}")
             os.makedirs(frames_dir, exist_ok=True)
-            
+
             # Generate frames with applied effect
             for frame_idx in range(frame_count):
                 t = frame_idx / fps
                 frame = effect.apply(img.copy(), t, duration)
                 frame_path = os.path.join(frames_dir, f"frame_{frame_idx:04d}.jpg")
                 cv2.imwrite(frame_path, frame)
-            
+
             # Combine frames into a video segment
             frames_pattern = os.path.join(frames_dir, "frame_%04d.jpg")
             cmd = [
@@ -286,13 +286,13 @@ async def apply_visual_effects(image_paths: List[str], durations: List[float], w
                 "-r", str(fps),
                 output_video
             ]
-            
+
             await run_ffmpeg(cmd)
             video_segments.append(output_video)
-            
+
             # Clean up frames
             shutil.rmtree(frames_dir)
-            
+
         except Exception as e:
             logger.error(f"Error applying effect to image {i}: {e}")
             # Fall back to static image

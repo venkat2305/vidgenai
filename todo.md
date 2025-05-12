@@ -68,6 +68,10 @@ SCENE
 we will let the models decide what to return. we don't need both image_video_search_query, ai_image_prompt.
 for human people, celebreties, lets ask it for image_video_search_query. lets say if the script says something like bharath ratna, we have to try to get an image with bharat ratna and the person taking it. 
 dialogue or narration : for stories we want narration.
+
+- handle script editing, image changing scene by scene.
+- when script and image is ready we can proceed with audio, video generation.
+- we have to handle multiple video generations for a script, show all of them relevant to that script. 
 --------------------------------------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------------------------------------
@@ -93,8 +97,17 @@ Audio and Sub:
 - subtitle style, with coloring to the word being spoke dynamic styles and nice font.
 - eleven labs also returns characters for second or something like that, I have to use it. but other voice providers may not return that so we have to handle this carefully.
 - we can also add some background audio's or sound effects with eleven labs api.
+- may use smallest.ai, sarvam bulbul v2
 --------------------------------------------------------------------------------------------------------------
 
 
 
 - We need to add video presets, fast, very fast across quality and resolution and fps so we might get video encoding faster.
+
+
+
+
+- FFMPEG, ultrafast means low compression. 
+
+
+- remove all the temp files created in the process. 
