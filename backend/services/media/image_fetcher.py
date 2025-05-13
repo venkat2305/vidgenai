@@ -1,8 +1,8 @@
 import aiohttp
 import logging
-import re
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any
+import re
 
 from core.config import settings
 
@@ -125,6 +125,7 @@ class ImageFetcherFactory:
         else:
             raise ValueError(f"Unsupported image fetcher provider: {provider}")
 
+
 class ImageFetchService:
     def __init__(self):
         self.fetcher = ImageFetcherFactory.get_fetcher('brave')
@@ -214,7 +215,6 @@ class ImageUtils:
     @staticmethod
     def extract_search_terms(celebrity_name: str, script: str, num_terms: int) -> List[str]:
         """Extract search terms from the script to find relevant images."""
-        import re
         sentences = re.split(r"[.!?]+", script)
         sentences = [s.strip() for s in sentences if s.strip()]
         search_terms = [f"{celebrity_name} portrait"]

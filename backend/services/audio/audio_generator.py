@@ -59,8 +59,8 @@ class AudioGenerator:
         audio_filename = os.path.join(self.temp_dir, f"audio_{hash(script)}.wav")
         providers = [
             ("Groq", self._generate_with_groq),
-            ("ElevenLabs", self._generate_with_eleven_labs),
             ("EdgeTTS", self._generate_with_edge_tts),
+            ("ElevenLabs", self._generate_with_eleven_labs),
         ]
         errors = []
 

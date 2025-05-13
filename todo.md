@@ -100,6 +100,18 @@ Audio and Sub:
 - may use smallest.ai, sarvam bulbul v2
 --------------------------------------------------------------------------------------------------------------
 
+--------------------------------------------------------------------------------------------------------------
+SCRIPT GENERATION
+- Automatic model selection: different model for different use cases.
+    1. use perplexity or gemini with search grounding for news, if we need to get latest info lets say for cricketers if we need their latest achievements etc. 
+    2. if we need to generate a story simple one, lets use fast groq model or model which handles.
+    3. for manim code gen, we have to use 2.5 pro as it is the best code gen model we have. 
+    4. for 1,2 if we need complex scenes we need to use a bigger model for better results.
+
+--------------------------------------------------------------------------------------------------------------
+
+
+
 
 
 - We need to add video presets, fast, very fast across quality and resolution and fps so we might get video encoding faster.
@@ -111,3 +123,34 @@ Audio and Sub:
 
 
 - remove all the temp files created in the process. 
+
+
+- i think we can do some processing asynchronously and parallely, like audio gen.
+- we have to make this modular in such a way that we could do things parallely since all we do is make api calls, lets just do them parallely. 
+
+
+google custom search api key : AIzaSyBMyiE8ybdPwyKNqj-6sdshkZOtRdeoxXE
+<script async src="https://cse.google.com/cse.js?cx=c4255d4dc04524bf5">
+</script>
+<div class="gcse-search"></div>
+serach engine id : c4255d4dc04524bf5
+
+
+
+unreel speech : https://unrealspeech.com/pricing
+250K characters
+6 hours of audio
+
+
+playai : https://play.ai/
+30 minutes of speech credits
+1 instant voice clone
+3 private playnotes
+1 concurrent playnote
+1 concurrent text to speech generation
+1 private agent
+1 concurrent conversation with agent
+
+
+- if we get many requests in the server, we have to do them one by one. like lets do a queue. mention that there are certain generations need to be done before this generation could be done. 
+- if we have lots of videos, lets not load all of them in the frontend

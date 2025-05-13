@@ -189,7 +189,7 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
         # 7. Mark as completed
         total_time = sum(v for k, v in step_timings.items() if not k.endswith("_failed"))
         step_timings["total_processing_time"] = total_time
-        
+
         await update_video_status(
             video_id,
             VideoStatus.COMPLETED,
