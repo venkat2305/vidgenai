@@ -51,6 +51,7 @@ what is the best way to aggregate or get images.
 
 --------------------------------------------------------------------------------------------------------------
 SCENE
+- lets have a seperate workflow for the scenes without effecting the existing ones. we can give two options in the api. 
 - json2video
 - we can generate scenes, script for that scene, image prompt for this scene
 - so if we have an video editor online, we can give them option to change image or script for a particular scene without affecting eveything.
@@ -152,6 +153,20 @@ playai : https://play.ai/
 1 concurrent conversation with agent
 
 
-- if we get many requests in the server, we have to do them one by one. like lets do a queue. mention that there are certain generations need to be done before this generation could be done. 
+- if we get many requests in the server, we have to do them one by one. like lets do a queue. mention that there are certain generations need to be done before this generation could be done. use CELERY + REDIS
 - if we have lots of videos, lets not load all of them in the frontend
 - in video composing as well, we have to include steps so that we can give more granular steps. 
+
+
+Race Conditions on tempfile.gettempdir()
+All generated files are placed in a shared temp dir with generic names (image_{i}_..., effect_segment_{i}.mp4), which can conflict across parallel runs.
+
+
+
+
+CHALLENGES
+out of memory in the cloud platform becuause of not removing unused things and it went out of memory. 
+
+
+
+• Replace “opencv-python” with “opencv-python-headless” (50 MB vs 200 MB).
