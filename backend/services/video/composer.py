@@ -11,9 +11,13 @@ import cv2
 from typing import List, Tuple, Dict, Any, Optional
 from services.video.effects import get_random_effect, VideoEffect, ZoomEffect, PanEffect
 import time
+from concurrent.futures import ThreadPoolExecutor
+
+executor = ThreadPoolExecutor(max_workers=4)
 
 logger = logging.getLogger("vidgenai.video_composer")
 
+executor = ThreadPoolExecutor(max_workers=4)
 
 async def compose_video(
     script: str,
@@ -230,75 +234,128 @@ def arrange_images_without_consecutive_duplicates(image_urls: List[str]) -> List
 
 
 async def apply_visual_effects(image_paths: List[str], durations: List[float], width: int, height: int) -> List[str]:
-    """
-    Apply visual effects to each image and convert them to short video segments.
-    Returns a list of video segment paths.
-    """
+    loop = asyncio.get_event_loop()
+    tasks = [
+        loop.run_in_executor(executor, apply_effect_to_image, i, img_path, duration, width, height)
+        for i, (img_path, duration) in enumerate(zip(image_paths, durations))
+    ]
+    return await asyncio.gather(*tasks)
+
+
+def apply_effect_to_image(index: int, img_path: str, duration: float, width: int, height: int) -> str:
     temp_dir = tempfile.gettempdir()
-    video_segments = []
-    fps = 30  # frames per second for smooth effects
-    
-    # Determine if this is a vertical video (9:16 aspect ratio)
-    is_vertical = height > width
+    output_video = os.path.join(temp_dir, f"effect_segment_{index}.mp4")
+    fps = 30
+    effect = get_random_effect()
 
-    for i, (img_path, duration) in enumerate(zip(image_paths, durations)):
-        # Only use zoom effects for vertical videos, as pan effects don't work well in 9:16
-        effect = get_random_effect()  # Now only returns zoom effects
-        logger.info(f"Applying {effect.__class__.__name__} to image {i}")
+    try:
+        img = cv2.imread(img_path)
+        if img is None:
+            logger.warning(f"Could not read image {img_path}. Using static image.")
+            return img_path
+
+        frame_count = max(1, int(fps * duration))
+        frames_dir = os.path.join(temp_dir, f"frames_{index}")
+        os.makedirs(frames_dir, exist_ok=True)
+
+        for frame_idx in range(frame_count):
+            t = frame_idx / fps
+            frame = effect.apply(img.copy(), t, duration)
+            frame_path = os.path.join(frames_dir, f"frame_{frame_idx:04d}.jpg")
+            cv2.imwrite(frame_path, frame)
+
+        frames_pattern = os.path.join(frames_dir, "frame_%04d.jpg")
+        cmd = [
+            "ffmpeg", "-y",
+            "-framerate", str(fps),
+            "-i", frames_pattern,
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-preset", "ultrafast",
+            "-crf", "34",
+            "-r", str(fps),
+            output_video
+        ]
+
+        asyncio.run(run_ffmpeg(cmd))
+        shutil.rmtree(frames_dir)
+        return output_video
+
+    except Exception as e:
+        logger.error(f"Error applying effect to image {index}: {e}")
+        return img_path
+
+
+# async def apply_visual_effects(image_paths: List[str], durations: List[float], width: int, height: int) -> List[str]:
+#     """
+#     Apply visual effects to each image and convert them to short video segments.
+#     Returns a list of video segment paths.
+#     """
+#     temp_dir = tempfile.gettempdir()
+#     video_segments = []
+#     fps = 30  # frames per second for smooth effects
+    
+#     # Determine if this is a vertical video (9:16 aspect ratio)
+#     is_vertical = height > width
+
+#     for i, (img_path, duration) in enumerate(zip(image_paths, durations)):
+#         # Only use zoom effects for vertical videos, as pan effects don't work well in 9:16
+#         effect = get_random_effect()  # Now only returns zoom effects
+#         logger.info(f"Applying {effect.__class__.__name__} to image {i}")
         
-        # Create output path for this segment
-        output_video = os.path.join(temp_dir, f"effect_segment_{i}.mp4")
+#         # Create output path for this segment
+#         output_video = os.path.join(temp_dir, f"effect_segment_{i}.mp4")
 
-        try:
-            # Read the image
-            img = cv2.imread(img_path)
-            if img is None:
-                logger.warning(f"Could not read image {img_path}. Using static image.")
-                video_segments.append(img_path)
-                continue
+#         try:
+#             # Read the image
+#             img = cv2.imread(img_path)
+#             if img is None:
+#                 logger.warning(f"Could not read image {img_path}. Using static image.")
+#                 video_segments.append(img_path)
+#                 continue
 
-            # Calculate frame count
-            frame_count = int(fps * duration)
-            if frame_count < 1:
-                frame_count = 1
+#             # Calculate frame count
+#             frame_count = int(fps * duration)
+#             if frame_count < 1:
+#                 frame_count = 1
 
-            # Create temporary frames directory
-            frames_dir = os.path.join(temp_dir, f"frames_{i}")
-            os.makedirs(frames_dir, exist_ok=True)
+#             # Create temporary frames directory
+#             frames_dir = os.path.join(temp_dir, f"frames_{i}")
+#             os.makedirs(frames_dir, exist_ok=True)
 
-            # Generate frames with applied effect
-            for frame_idx in range(frame_count):
-                t = frame_idx / fps
-                frame = effect.apply(img.copy(), t, duration)
-                frame_path = os.path.join(frames_dir, f"frame_{frame_idx:04d}.jpg")
-                cv2.imwrite(frame_path, frame)
+#             # Generate frames with applied effect
+#             for frame_idx in range(frame_count):
+#                 t = frame_idx / fps
+#                 frame = effect.apply(img.copy(), t, duration)
+#                 frame_path = os.path.join(frames_dir, f"frame_{frame_idx:04d}.jpg")
+#                 cv2.imwrite(frame_path, frame)
 
-            # Combine frames into a video segment
-            frames_pattern = os.path.join(frames_dir, "frame_%04d.jpg")
-            cmd = [
-                "ffmpeg", "-y",
-                "-framerate", str(fps),
-                "-i", frames_pattern,
-                "-c:v", "libx264",
-                "-pix_fmt", "yuv420p",
-                "-preset", "fast",
-                "-crf", "28",
-                "-r", str(fps),
-                output_video
-            ]
+#             # Combine frames into a video segment
+#             frames_pattern = os.path.join(frames_dir, "frame_%04d.jpg")
+#             cmd = [
+#                 "ffmpeg", "-y",
+#                 "-framerate", str(fps),
+#                 "-i", frames_pattern,
+#                 "-c:v", "libx264",
+#                 "-pix_fmt", "yuv420p",
+#                 "-preset", "fast",
+#                 "-crf", "28",
+#                 "-r", str(fps),
+#                 output_video
+#             ]
 
-            await run_ffmpeg(cmd)
-            video_segments.append(output_video)
+#             await run_ffmpeg(cmd)
+#             video_segments.append(output_video)
 
-            # Clean up frames
-            shutil.rmtree(frames_dir)
+#             # Clean up frames
+#             shutil.rmtree(frames_dir)
 
-        except Exception as e:
-            logger.error(f"Error applying effect to image {i}: {e}")
-            # Fall back to static image
-            video_segments.append(img_path)
+#         except Exception as e:
+#             logger.error(f"Error applying effect to image {i}: {e}")
+#             # Fall back to static image
+#             video_segments.append(img_path)
     
-    return video_segments
+#     return video_segments
 
 
 async def generate_final_video_from_clips(concat_path, audio_path, subtitle_path, width, height, output_path):
@@ -318,9 +375,11 @@ async def generate_final_video_from_clips(concat_path, audio_path, subtitle_path
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
         "-preset", "ultrafast",
-        "-b:v", "800k", 
+        "-crf", "35",
+        "-tune", "zerolatency",
+        "-b:v", "400k", 
         "-c:a", "aac",
-        "-b:a", "64k",
+        "-b:a", "32k",
         "-vf", vf_filters,
         "-shortest",
         output_path
@@ -432,27 +491,56 @@ def get_video_dimensions(aspect_ratio: str) -> Tuple[int, int]:
         return 480, 854
 
 
-async def download_images(image_urls: List[str]) -> List[str]:
-  """
-  Download images from URLs.
-  """
-  temp_dir = tempfile.gettempdir()
-  paths: List[str] = []
+async def fetch_image(session, url, path, sem):
+    async with sem:
+        try:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    async with aiofiles.open(path, "wb") as f:
+                        await f.write(await resp.read())
+                    return path
+                else:
+                    logger.warning(f"Failed to download {url}: {resp.status}")
+        except Exception as e:
+            logger.error(f"Error downloading {url}: {e}")
+    return None
 
-  async with aiohttp.ClientSession() as session:
-    for i, url in enumerate(image_urls):
-      img_path = os.path.join(temp_dir, f"image_{i}_{hash(url)}.jpg")
-      try:
-        async with session.get(url) as resp:
-          if resp.status == 200:
-            async with aiofiles.open(img_path, "wb") as f:
-              await f.write(await resp.read())
-            paths.append(img_path)
-          else:
-            logger.warning(f"Failed to download {url}: {resp.status}")
-      except Exception as e:
-        logger.error(f"Error downloading {url}: {e}")
-  return paths
+async def download_images(image_urls: List[str]) -> List[str]:
+    temp_dir = tempfile.gettempdir()
+    paths: List[str] = []
+    sem = asyncio.Semaphore(4)  # Control max concurrency
+
+    async with aiohttp.ClientSession() as session:
+        tasks = [
+            fetch_image(session, url, os.path.join(temp_dir, f"image_{i}_{hash(url)}.jpg"), sem)
+            for i, url in enumerate(image_urls)
+        ]
+        results = await asyncio.gather(*tasks)
+    return [r for r in results if r]
+
+
+# async def download_images(image_urls: List[str]) -> List[str]:
+#   """
+#   Download images from URLs.
+#   """
+  
+#   temp_dir = tempfile.gettempdir()
+#   paths: List[str] = []
+
+#   async with aiohttp.ClientSession() as session:
+#     for i, url in enumerate(image_urls):
+#       img_path = os.path.join(temp_dir, f"image_{i}_{hash(url)}.jpg")
+#       try:
+#         async with session.get(url) as resp:
+#           if resp.status == 200:
+#             async with aiofiles.open(img_path, "wb") as f:
+#               await f.write(await resp.read())
+#             paths.append(img_path)
+#           else:
+#             logger.warning(f"Failed to download {url}: {resp.status}")
+#       except Exception as e:
+#         logger.error(f"Error downloading {url}: {e}")
+#   return paths
 
 
 async def get_media_duration(path: str) -> float:
