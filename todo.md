@@ -154,3 +154,4 @@ playai : https://play.ai/
 
 - if we get many requests in the server, we have to do them one by one. like lets do a queue. mention that there are certain generations need to be done before this generation could be done. 
 - if we have lots of videos, lets not load all of them in the frontend
+- in video composing as well, we have to include steps so that we can give more granular steps. 
