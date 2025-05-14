@@ -9,12 +9,5 @@ export const PRODUCTION_BACKEND_URL = PRODUCTION_BACKEND_URL_DIGITAL_OCEAN
 export const USE_PRODUCTION_BACKEND = true;
 
 // Helper function to determine which backend URL to use
-export const getBackendUrl = () => {
-  // For browser environment, use empty base URL to leverage Next.js API routing
-  if (typeof window !== 'undefined') {
-    return '';
-  }
-  
-  // For server-side calls, use the actual backend URL based on the toggle
-  return USE_PRODUCTION_BACKEND ? PRODUCTION_BACKEND_URL : LOCAL_BACKEND_URL;
-};
+export const getBackendUrl = () =>
+  USE_PRODUCTION_BACKEND ? PRODUCTION_BACKEND_URL : LOCAL_BACKEND_URL;
