@@ -8,8 +8,8 @@ import aiofiles
 import shutil
 import numpy as np
 import cv2
-from typing import List, Tuple, Dict, Any, Optional
-from services.video.effects import get_random_effect, VideoEffect, ZoomEffect, PanEffect
+from typing import List, Tuple, Dict, Any
+from services.video.effects import get_random_effect
 import time
 from concurrent.futures import ThreadPoolExecutor
 

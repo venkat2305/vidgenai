@@ -92,6 +92,7 @@ Images and Videos:
 
 --------------------------------------------------------------------------------------------------------------
 Audio and Sub: 
+- use characters, timestamps from eleven labs audio gen api request. 
 - we have to store audio duration, other meta data which can be used in compose_video. so there we dont have to run ffmpeg command to know the duration of the audio file.
 - multiple language support. eleven labs dubbing api to make videos in multiple languages.
 - SSML
@@ -170,3 +171,5 @@ out of memory in the cloud platform becuause of not removing unused things and i
 
 
 • Replace “opencv-python” with “opencv-python-headless” (50 MB vs 200 MB).
+
+- we dont need many clients right, if possible lets do with requests library.
