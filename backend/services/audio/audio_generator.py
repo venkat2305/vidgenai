@@ -23,8 +23,13 @@ class AudioGenerator:
             with open(audio_filename, "wb") as f:
                 f.write(audio_data)
 
-            self.logger.info(f"Generated audio file with ElevenLabs: {audio_filename}")
-            return audio_filename
+            alignment_data = {
+                "alignment": response.alignment,
+                "normalized_alignment": response.normalized_alignment
+            }
+
+            self.logger.info(f"Generated audio file with ElevenLabs: {audio_filename} {'with' if alignment_data else 'without'} timestamps")
+            return (audio_filename, alignment_data)
         except Exception as e:
             self.logger.error(f"Error generating audio with ElevenLabs: {str(e)}")
             raise Exception(f"Failed to generate audio with ElevenLabs: {str(e)}")

@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY")
     PERPLEXITY_API_KEY: Optional[str] = os.getenv("PERPLEXITY_API_KEY")
     ELEVENLABS_API_KEY: Optional[str] = os.getenv("ELEVENLABS_API_KEY")
+    SMALLESTAI_API_KEY: Optional[str] = os.getenv("SMALLESTAI_API_KEY")  # Add this line
+
 
     # Video generation settings
     DEFAULT_VIDEO_QUALITY: str = os.getenv("DEFAULT_VIDEO_QUALITY", "720p")

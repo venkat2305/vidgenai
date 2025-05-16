@@ -173,3 +173,7 @@ out of memory in the cloud platform becuause of not removing unused things and i
 • Replace “opencv-python” with “opencv-python-headless” (50 MB vs 200 MB).
 
 - we dont need many clients right, if possible lets do with requests library.
+
+- proper error handling, like what is the error message at which step it happened.
+- hanlde fallbacks properly, check for subtitle generator.
+- use a langchain/langraph to this app to make it better. 

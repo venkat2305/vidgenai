@@ -109,9 +109,8 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
         audio_path = None
         try:
             audio_generator = AudioGenerator(temp_dir=temp_dir)
-            audio_path = await audio_generator.generate_audio(script)
-            
-            # Upload audio (optional)
+            audio_path, alignment_data = await audio_generator.generate_audio(script)
+
             upload_start = datetime.now(timezone.utc)
             try:
                 audio_url = await upload_to_s3(audio_path, f"{video_id}.mp3")
@@ -119,7 +118,7 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
             except Exception as upload_error:
                 logger.error(f"Audio upload failed: {str(upload_error)}")
                 step_timings["audio_upload_failed"] = (datetime.now(timezone.utc) - upload_start).total_seconds()
-            
+
             step_timings["audio_generation"] = (datetime.now(timezone.utc) - start_time).total_seconds()
             await update_video_status(
                 video_id,
@@ -143,8 +142,8 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
         await update_video_status(video_id, VideoStatus.GENERATING_SUBTITLES, 70)
         start_time = datetime.now(timezone.utc)
         subtitle_generator = SubtitleGenerator()
-        subtitle_path = await subtitle_generator.generate(script, audio_path, temp_dir=temp_dir)
-        
+        subtitle_path = await subtitle_generator.generate(script, audio_path, alignment_data, temp_dir=temp_dir)
+
         # Upload subtitles
         upload_start = datetime.now(timezone.utc)
         try:
@@ -153,7 +152,7 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
         except Exception as upload_error:
             logger.error(f"Subtitle upload failed: {str(upload_error)}")
             step_timings["subtitle_upload_failed"] = (datetime.now(timezone.utc) - upload_start).total_seconds()
-        
+
         step_timings["subtitle_generation"] = (datetime.now(timezone.utc) - start_time).total_seconds()
         await update_video_status(
             video_id,
