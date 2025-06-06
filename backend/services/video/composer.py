@@ -25,14 +25,15 @@ async def compose_video(
     audio_path: str,
     subtitle_path: str,
     video_aspect: str = "9:16",
-    apply_effects: bool = True
+    apply_effects: bool = True,
+    temp_dir: str | None = None,
 ) -> Tuple[str, str, float]:
     """
     Compose a video from images, audio, and subtitles using ffmpeg.
     Returns (video_path, thumbnail_path, duration).
     """
     try:
-        temp_dir = tempfile.gettempdir()
+        temp_dir = temp_dir or tempfile.gettempdir()
         video_filename = os.path.join(
             temp_dir, f"video_{hash(script)}.mp4"
         )
@@ -81,7 +82,7 @@ async def compose_video(
 
         # Step 3: Download images
         t3_start = time.perf_counter()
-        image_paths = await download_images(image_urls_arranged)
+        image_paths = await download_images(image_urls_arranged, temp_dir)
         if not image_paths:
             raise Exception("No valid images downloaded")
         t3_end = time.perf_counter()
@@ -90,7 +91,10 @@ async def compose_video(
         # Step 4: Pre-process images to fit the target aspect ratio without stretching
         t4_start = time.perf_counter()
         processed_paths = await process_images_for_aspect_ratio(
-            image_paths, video_width, video_height
+            image_paths,
+            video_width,
+            video_height,
+            temp_dir,
         )
         if not processed_paths:
             raise Exception("Image processing failed")
@@ -115,7 +119,11 @@ async def compose_video(
         t7_start = time.perf_counter()
         if apply_effects:
             processed_paths = await apply_visual_effects(
-                processed_paths, durations, video_width, video_height
+                processed_paths,
+                durations,
+                video_width,
+                video_height,
+                temp_dir,
             )
         t7_end = time.perf_counter()
         logger.info(f"Step 7: Applied effects in {t7_end - t7_start:.2f}s")
@@ -233,17 +241,38 @@ def arrange_images_without_consecutive_duplicates(image_urls: List[str]) -> List
   return result
 
 
-async def apply_visual_effects(image_paths: List[str], durations: List[float], width: int, height: int) -> List[str]:
+async def apply_visual_effects(
+    image_paths: List[str],
+    durations: List[float],
+    width: int,
+    height: int,
+    temp_dir: str,
+) -> List[str]:
     loop = asyncio.get_event_loop()
     tasks = [
-        loop.run_in_executor(executor, apply_effect_to_image, i, img_path, duration, width, height)
+        loop.run_in_executor(
+            executor,
+            apply_effect_to_image,
+            i,
+            img_path,
+            duration,
+            width,
+            height,
+            temp_dir,
+        )
         for i, (img_path, duration) in enumerate(zip(image_paths, durations))
     ]
     return await asyncio.gather(*tasks)
 
 
-def apply_effect_to_image(index: int, img_path: str, duration: float, width: int, height: int) -> str:
-    temp_dir = tempfile.gettempdir()
+def apply_effect_to_image(
+    index: int,
+    img_path: str,
+    duration: float,
+    width: int,
+    height: int,
+    temp_dir: str,
+) -> str:
     output_video = os.path.join(temp_dir, f"effect_segment_{index}.mp4")
     fps = 30
     effect = get_random_effect()
@@ -388,12 +417,16 @@ async def generate_final_video_from_clips(concat_path, audio_path, subtitle_path
     await run_ffmpeg(cmd)
 
 
-async def process_images_for_aspect_ratio(images: List[str], target_width: int, target_height: int) -> List[str]:
+async def process_images_for_aspect_ratio(
+    images: List[str],
+    target_width: int,
+    target_height: int,
+    temp_dir: str,
+) -> List[str]:
     """
     Process images to fit the target aspect ratio without stretching.
     For mismatched aspect ratios, will add background padding or crop as appropriate.
     """
-    temp_dir = tempfile.gettempdir()
     processed_paths = []
     
     for i, img_path in enumerate(images):
@@ -505,8 +538,7 @@ async def fetch_image(session, url, path, sem):
             logger.error(f"Error downloading {url}: {e}")
     return None
 
-async def download_images(image_urls: List[str]) -> List[str]:
-    temp_dir = tempfile.gettempdir()
+async def download_images(image_urls: List[str], temp_dir: str) -> List[str]:
     paths: List[str] = []
     sem = asyncio.Semaphore(4)  # Control max concurrency
 
