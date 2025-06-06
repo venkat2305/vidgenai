@@ -5,10 +5,11 @@ import base64
 from clients.groq_client import groq_client
 from clients.eleven_labs import generate_audio_with_eleven_labs
 from core.constants import EL_MATILDA_VOICE_ID
+from typing import Optional
 
 
 class AudioGenerator:
-    def __init__(self, temp_dir: str | None = None):
+    def __init__(self, temp_dir: Optional[str] = None):
         self.logger = logging.getLogger("vidgenai.audio_generator")
         self.temp_dir = temp_dir or tempfile.gettempdir()
 

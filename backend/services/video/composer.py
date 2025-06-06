@@ -8,7 +8,7 @@ import aiofiles
 import shutil
 import numpy as np
 import cv2
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 from services.video.effects import get_random_effect
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -26,7 +26,7 @@ async def compose_video(
     subtitle_path: str,
     video_aspect: str = "9:16",
     apply_effects: bool = True,
-    temp_dir: str | None = None,
+    temp_dir: Optional[str] = None,
 ) -> Tuple[str, str, float]:
     """
     Compose a video from images, audio, and subtitles using ffmpeg.

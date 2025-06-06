@@ -2,7 +2,7 @@ import os
 import tempfile
 import logging
 import re
-from typing import Dict, Any, List, Protocol, Tuple
+from typing import Dict, Any, List, Protocol, Tuple, Optional
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from clients.groq_client import groq_client
@@ -257,7 +257,7 @@ class SubtitleGenerator:
             "ass": ASSFormatter()
         }
 
-    async def generate(self, script: str, audio_path: str, timestamp_data: Dict[str, Any] = None, format_type: str = "srt", temp_dir: str | None = None) -> str:
+    async def generate(self, script: str, audio_path: str, timestamp_data: Dict[str, Any] = None, format_type: str = "srt", temp_dir: Optional[str]= None) -> str:
         temp_dir = temp_dir or tempfile.gettempdir()
         subtitle_filename = os.path.join(
             temp_dir, f"subtitles_{os.path.basename(audio_path)}_{format_type}.{format_type}"
