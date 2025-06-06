@@ -167,6 +167,7 @@ All generated files are placed in a shared temp dir with generic names (image_{i
 
 CHALLENGES
 out of memory in the cloud platform becuause of not removing unused things and it went out of memory. 
+we were writing clips to the disk but this process is slow. we can do a ram only pipeline for getting all the clips and merging them but we have to take care of ram resources properly. 
 
 
 
@@ -177,3 +178,14 @@ out of memory in the cloud platform becuause of not removing unused things and i
 - proper error handling, like what is the error message at which step it happened.
 - hanlde fallbacks properly, check for subtitle generator.
 - use a langchain/langraph to this app to make it better. 
+
+
+- 
+
+
+https://www.inngest.com/platform?ref=nav
+https://modal.com/use-cases/job-queues
+
+AI podcast clipper:
+https://github.com/Andreaswt/ai-podcast-clipper-saas
+https://www.youtube.com/watch?v=PeFZcvWucoU&lc=UgygPH-I4OnPzFLV1fZ4AaABAg
