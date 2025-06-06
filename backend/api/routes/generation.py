@@ -6,6 +6,7 @@ from services.video.composer import compose_video
 from services.s3.storage import upload_to_s3
 import logging
 from datetime import datetime, timezone
+import tempfile
 
 from services.script.script_generator import ScriptGenerationService
 from services.audio.audio_generator import AudioGenerator
@@ -54,6 +55,8 @@ async def update_video_status(
 
 async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", apply_effects: bool = True, use_contextual_images: bool = True):
     """Background task to generate a video with timing measurements for each step."""
+    temp_dir_obj = tempfile.TemporaryDirectory()
+    temp_dir = temp_dir_obj.name
     try:
         videos_collection = mongodb.db.videos
         video = await videos_collection.find_one({"id": video_id})
@@ -105,7 +108,7 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
         audio_url = None
         audio_path = None
         try:
-            audio_generator = AudioGenerator()
+            audio_generator = AudioGenerator(temp_dir=temp_dir)
             audio_path = await audio_generator.generate_audio(script)
             
             # Upload audio (optional)
@@ -140,7 +143,7 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
         await update_video_status(video_id, VideoStatus.GENERATING_SUBTITLES, 70)
         start_time = datetime.now(timezone.utc)
         subtitle_generator = SubtitleGenerator()
-        subtitle_path = await subtitle_generator.generate(script, audio_path)
+        subtitle_path = await subtitle_generator.generate(script, audio_path, temp_dir=temp_dir)
         
         # Upload subtitles
         upload_start = datetime.now(timezone.utc)
@@ -163,8 +166,13 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
         await update_video_status(video_id, VideoStatus.COMPOSING_VIDEO, 80)
         start_time = datetime.now(timezone.utc)
         video_path, thumbnail_path, duration = await compose_video(
-            script, image_data, audio_path, subtitle_path,
-            video_aspect=aspect_ratio, apply_effects=apply_effects
+            script,
+            image_data,
+            audio_path,
+            subtitle_path,
+            video_aspect=aspect_ratio,
+            apply_effects=apply_effects,
+            temp_dir=temp_dir,
         )
         step_timings["video_composition"] = (datetime.now(timezone.utc) - start_time).total_seconds()
         await update_video_status(
@@ -213,6 +221,9 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
             error_message=str(e),
             step_timings=step_timings
         )
+
+    finally:
+        temp_dir_obj.cleanup()
 
 
 @router.post("/", response_model=VideoModel)

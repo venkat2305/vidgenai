@@ -121,8 +121,8 @@ class SubtitleGenerator:
             GroqTranscriptionProvider()
         ]
 
-    async def generate(self, script: str, audio_path: str) -> str:
-        temp_dir = tempfile.gettempdir()
+    async def generate(self, script: str, audio_path: str, temp_dir: str | None = None) -> str:
+        temp_dir = temp_dir or tempfile.gettempdir()
         subtitle_filename = os.path.join(
             temp_dir, f"subtitles_{os.path.basename(audio_path)}.srt"
         )

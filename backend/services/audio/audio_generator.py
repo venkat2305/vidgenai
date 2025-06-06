@@ -8,9 +8,9 @@ from core.constants import EL_MATILDA_VOICE_ID
 
 
 class AudioGenerator:
-    def __init__(self):
+    def __init__(self, temp_dir: str | None = None):
         self.logger = logging.getLogger("vidgenai.audio_generator")
-        self.temp_dir = tempfile.gettempdir()
+        self.temp_dir = temp_dir or tempfile.gettempdir()
 
     async def _generate_with_eleven_labs(self, script: str, audio_filename: str) -> str:
         try:
