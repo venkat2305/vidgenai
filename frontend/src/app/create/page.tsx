@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, Info } from "lucide-react";
+import { Loader2, Info, PlusCircle, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createVideo, VideoCreateRequest } from "@/lib/api";
 
@@ -115,22 +115,34 @@ export default function CreatePage() {
   };
 
   return (
-    <div className="container max-w-xl py-8 mx-auto">
-      <h1 className="text-3xl font-bold mb-6 text-center">Create New Sports Reel</h1>
+    <div className="container max-w-2xl py-8 mx-auto px-4 gradient-bg min-h-screen">
+      <div className="animate-fade-in">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center p-3 rounded-full sports-gradient text-white mb-4">
+            <PlusCircle size={32} />
+          </div>
+          <h1 className="text-4xl font-bold mb-2 bg-clip-text text-transparent sports-gradient">
+            Create New Sports Reel
+          </h1>
+          <p className="text-muted-foreground text-lg">
+            Bring your favorite athlete&apos;s story to life with AI
+          </p>
+        </div>
+      </div>
       
-      <Card>
-        <CardHeader>
-          <CardTitle>Generate AI Sports Celebrity Reel</CardTitle>
-          <CardDescription>
+      <Card className="sports-card animate-slide-up">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl">Generate AI Sports Celebrity Reel</CardTitle>
+          <CardDescription className="text-base">
             Fill in the details below to create an AI-generated history reel about your favorite sports celebrity.
           </CardDescription>
         </CardHeader>
         
         <CardContent>
-          <form id="create-form" onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="celebrity_name" className="text-sm font-medium">
-                Celebrity Name <span className="text-red-500">*</span>
+          <form id="create-form" onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-3 group">
+              <label htmlFor="celebrity_name" className="text-sm font-semibold text-foreground">
+                Celebrity Name <span className="text-accent">*</span>
               </label>
               <input
                 type="text"
@@ -139,33 +151,33 @@ export default function CreatePage() {
                 value={formState.celebrity_name}
                 onChange={handleInputChange}
                 placeholder="e.g., Michael Jordan, Serena Williams"
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-3 border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all hover:border-primary/50"
                 required
               />
             </div>
             
-            <div className="space-y-2">
-              <label htmlFor="sportType" className="text-sm font-medium">
-                Sport <span className="text-red-500">*</span>
+            <div className="space-y-3 group">
+              <label htmlFor="sportType" className="text-sm font-semibold text-foreground">
+                Sport <span className="text-accent">*</span>
               </label>
               <select
                 id="sportType"
                 name="sportType"
                 value={formState.sportType}
                 onChange={handleInputChange}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-3 border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all hover:border-primary/50"
                 required
               >
                 <option value="">Select a sport</option>
-                <option value="basketball">Basketball</option>
-                <option value="football">Football</option>
-                <option value="soccer">Soccer</option>
-                <option value="tennis">Tennis</option>
-                <option value="golf">Golf</option>
-                <option value="baseball">Baseball</option>
-                <option value="cricket">Cricket</option>
-                <option value="hockey">Hockey</option>
-                <option value="other">Other</option>
+                <option value="basketball">🏀 Basketball</option>
+                <option value="football">🏈 Football</option>
+                <option value="soccer">⚽ Soccer</option>
+                <option value="tennis">🎾 Tennis</option>
+                <option value="golf">⛳ Golf</option>
+                <option value="baseball">⚾ Baseball</option>
+                <option value="cricket">🏏 Cricket</option>
+                <option value="hockey">🏒 Hockey</option>
+                <option value="other">🏆 Other</option>
               </select>
             </div>
             
@@ -195,57 +207,62 @@ export default function CreatePage() {
               />
             </div> */}
             
-            <div className="space-y-2">
-              <label htmlFor="focus" className="text-sm font-medium">Content Focus</label>
+            <div className="space-y-3 group">
+              <label htmlFor="focus" className="text-sm font-semibold text-foreground">Content Focus</label>
               <select
                 id="focus"
                 name="focus"
                 value={formState.focus}
                 onChange={handleInputChange}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-3 border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all hover:border-primary/50"
               >
-                <option value="career">Career Highlights</option>
-                <option value="personal">Personal Life</option>
-                <option value="achievements">Awards & Achievements</option>
-                <option value="legacy">Legacy & Impact</option>
-                <option value="early-life">Early Life & Journey</option>
+                <option value="career">🎯 Career Highlights</option>
+                <option value="personal">💭 Personal Life</option>
+                <option value="achievements">🏆 Awards & Achievements</option>
+                <option value="legacy">⭐ Legacy & Impact</option>
+                <option value="early-life">🌟 Early Life & Journey</option>
               </select>
             </div>
             
-            <div className="space-y-2">
-              <label htmlFor="aspectRatio" className="text-sm font-medium">Aspect Ratio</label>
+            <div className="space-y-3 group">
+              <label htmlFor="aspectRatio" className="text-sm font-semibold text-foreground">Aspect Ratio</label>
               <select
                 id="aspectRatio"
                 name="aspectRatio"
                 value={formState.aspectRatio}
                 onChange={handleInputChange}
-                className="w-full px-3 py-2 border rounded-md"
+                className="w-full px-4 py-3 border rounded-xl bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all hover:border-primary/50"
               >
-                <option value="9:16">Vertical (9:16) - Best for mobile</option>
-                <option value="16:9">Landscape (16:9) - Best for desktop</option>
-                <option value="1:1">Square (1:1) - Best for social media</option>
+                <option value="9:16">📱 Vertical (9:16) - Best for mobile</option>
+                <option value="16:9">💻 Landscape (16:9) - Best for desktop</option>
+                <option value="1:1">📷 Square (1:1) - Best for social media</option>
               </select>
             </div>
             
-            <div className="flex items-center space-x-2">
+            <div className="flex items-start space-x-3 p-4 rounded-xl bg-secondary/50 border border-secondary group hover:bg-secondary/70 transition-colors">
               <input
                 type="checkbox"
                 id="applyEffects"
                 name="applyEffects"
                 checked={formState.applyEffects}
                 onChange={handleCheckboxChange}
-                className="rounded"
+                className="mt-1 rounded w-4 h-4 text-primary focus:ring-primary"
               />
-              <label htmlFor="applyEffects" className="text-sm font-medium">
-                Apply visual effects (zoom/pan) to make the video more dynamic
-              </label>
+              <div>
+                <label htmlFor="applyEffects" className="text-sm font-semibold text-foreground cursor-pointer">
+                  ✨ Apply Dynamic Visual Effects
+                </label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Add professional zoom and pan effects to make your video more engaging
+                </p>
+              </div>
             </div>
           </form>
           
-          <div className="mt-4">
+          <div className="mt-6">
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="flex items-center gap-2 glass-effect hover:scale-105 transition-transform">
                   <Info size={16} />
                   How it works
                 </Button>
@@ -293,16 +310,19 @@ export default function CreatePage() {
           <Button 
             type="submit"
             form="create-form"
-            className="w-full"
+            className="w-full sports-gradient text-white text-lg py-6 hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:scale-100"
             disabled={isSubmitting}
           >
             {isSubmitting ? (
               <>
-                <Loader2 size={16} className="mr-2 animate-spin" />
-                Starting Generation
+                <Loader2 size={20} className="mr-2 animate-spin" />
+                Starting Generation...
               </>
             ) : (
-              "Generate Reel"
+              <>
+                <Zap size={20} className="mr-2" />
+                Generate Reel
+              </>
             )}
           </Button>
         </CardFooter>
