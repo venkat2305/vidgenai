@@ -171,7 +171,7 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
 
         try:
             # Get a handle to the deployed Modal function
-            f = modal.Function.lookup("video-generator", "generate_video")
+            f = modal.Function.from_name("video-generator", "generate_video")
 
             # Asynchronously call the Modal function
             modal_result = await f.remote.aio(
