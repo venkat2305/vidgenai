@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
     PERPLEXITY_MODEL: str = "sonar"
 
+    # Modal settings
+    MODAL_TOKEN_ID: Optional[str] = os.getenv("MODAL_TOKEN_ID")
+    MODAL_TOKEN_SECRET: Optional[str] = os.getenv("MODAL_TOKEN_SECRET")
+
     class Config:
         env_file = ".env"
 
