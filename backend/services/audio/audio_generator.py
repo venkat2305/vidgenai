@@ -64,8 +64,8 @@ class AudioGenerator:
     async def generate_audio(self, script: str) -> str:
         audio_filename = os.path.join(self.temp_dir, f"audio_{hash(script)}.wav")
         providers = [
-            ("ElevenLabs", self._generate_with_eleven_labs),
             ("Groq", self._generate_with_groq),
+            ("ElevenLabs", self._generate_with_eleven_labs),
             ("EdgeTTS", self._generate_with_edge_tts),
         ]
         errors = []
