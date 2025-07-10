@@ -1,3 +1,4 @@
+cleanup the code. 
 <!-- 1. api versioning -->
 <!-- 2. r2 instead of s3 -->
 <!-- 3. use whisper-timestamped instead of openai-whisper -->

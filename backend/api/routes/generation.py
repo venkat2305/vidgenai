@@ -2,7 +2,10 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from db.mongodb import mongodb
 from db.models.video import VideoCreate, VideoModel, VideoStatus
 
-from services.video.composer import compose_video
+import modal
+import asyncio
+import aiofiles
+
 from services.s3.storage import upload_to_s3
 import logging
 from datetime import datetime, timezone
@@ -147,7 +150,7 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
         # Upload subtitles
         upload_start = datetime.now(timezone.utc)
         try:
-            await upload_to_s3(subtitle_path, f"{video_id}.srt")
+            subtitle_url = await upload_to_s3(subtitle_path, f"{video_id}.srt")
             step_timings["subtitle_upload"] = (datetime.now(timezone.utc) - upload_start).total_seconds()
         except Exception as upload_error:
             logger.error(f"Subtitle upload failed: {str(upload_error)}")
@@ -158,56 +161,73 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
             video_id,
             VideoStatus.GENERATING_SUBTITLES,
             80,
+            subtitle_url=subtitle_url,
             step_timings=step_timings
         )
 
-        # 5. Compose video
-        await update_video_status(video_id, VideoStatus.COMPOSING_VIDEO, 80)
+        # 5. Offload video composition to Modal
+        await update_video_status(video_id, VideoStatus.COMPOSING_VIDEO, 85)
         start_time = datetime.now(timezone.utc)
-        video_path, thumbnail_path, duration = await compose_video(
-            script,
-            image_data,
-            audio_path,
-            subtitle_path,
-            video_aspect=aspect_ratio,
-            apply_effects=apply_effects,
-            temp_dir=temp_dir,
-        )
-        step_timings["video_composition"] = (datetime.now(timezone.utc) - start_time).total_seconds()
-        await update_video_status(
-            video_id,
-            VideoStatus.COMPOSING_VIDEO,
-            90,
-            step_timings=step_timings
-        )
 
-        # 6. Upload final assets
-        await update_video_status(video_id, VideoStatus.UPLOADING, 90)
-        start_time = datetime.now(timezone.utc)
         try:
-            video_url = await upload_to_s3(video_path, f"{video_id}-video.mp4")
-            thumbnail_url = await upload_to_s3(thumbnail_path, f"{video_id}-thumbnail.jpg")
-            step_timings["final_upload"] = (datetime.now(timezone.utc) - start_time).total_seconds()
-        except Exception as upload_error:
-            logger.error(f"Final upload failed: {str(upload_error)}")
-            step_timings["final_upload_failed"] = (datetime.now(timezone.utc) - start_time).total_seconds()
-            raise
+            # Get a handle to the deployed Modal function
+            f = modal.Function.lookup("video-generator", "generate_video")
 
-        # 7. Mark as completed
-        total_time = sum(v for k, v in step_timings.items() if not k.endswith("_failed"))
-        step_timings["total_processing_time"] = total_time
+            # Asynchronously call the Modal function
+            modal_result = await f.remote.aio(
+                image_urls=image_urls,
+                audio_url=audio_url,
+                subtitle_url=subtitle_url,
+                script=script,
+                video_aspect=aspect_ratio,
+                apply_effects=apply_effects,
+            )
 
-        await update_video_status(
-            video_id,
-            VideoStatus.COMPLETED,
-            100,
-            video_url=video_url,
-            thumbnail_url=thumbnail_url,
-            duration=duration,
-            step_timings=step_timings
-        )
+            if not modal_result or not modal_result.get("success"):
+                raise HTTPException(status_code=500, detail="Modal video generation failed.")
 
-        logger.info(f"Video generation completed for {video_id} in {total_time:.2f} seconds")
+            video_url = modal_result["video_url"]
+            thumbnail_url = modal_result["thumbnail_url"]
+            
+            # Use ffprobe to get the duration from the remote video URL
+            # This is a simplified approach. For production, you might want a more robust way.
+            proc = await asyncio.create_subprocess_exec(
+                "ffprobe", "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", video_url,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode == 0:
+                duration = float(stdout.decode().strip())
+            else:
+                logger.warning(f"Could not probe video duration for {video_url}. Setting to 0.")
+                duration = 0
+
+            step_timings["video_composition_modal"] = (datetime.now(timezone.utc) - start_time).total_seconds()
+            
+            # Mark as completed since Modal handles the final upload
+            total_time = sum(v for k, v in step_timings.items() if not k.endswith("_failed"))
+            step_timings["total_processing_time"] = total_time
+
+            await update_video_status(
+                video_id,
+                VideoStatus.COMPLETED,
+                100,
+                video_url=video_url,
+                thumbnail_url=thumbnail_url,
+                duration=duration,
+                step_timings=step_timings
+            )
+            logger.info(f"Modal video generation completed for {video_id} in {total_time:.2f} seconds")
+
+        except Exception as modal_error:
+            logger.error(f"Modal video generation failed for {video_id}: {str(modal_error)}", exc_info=True)
+            await update_video_status(
+                video_id,
+                VideoStatus.FAILED,
+                error_message=f"Modal generation failed: {str(modal_error)}",
+            )
+            return
 
     except Exception as e:
         logger.error(f"Error generating video {video_id}: {str(e)}", exc_info=True)
@@ -220,7 +240,6 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
             error_message=str(e),
             step_timings=step_timings
         )
-
     finally:
         temp_dir_obj.cleanup()
 
