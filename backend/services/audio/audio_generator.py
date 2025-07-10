@@ -48,7 +48,7 @@ class AudioGenerator:
             with open(audio_filename, "wb") as f:
                 f.write(audio_data)
             self.logger.info(f"Generated audio file: {audio_filename}")
-            return audio_filename
+            return (audio_filename, None)
         except Exception as e:
             self.logger.error(f"Error generating audio with Groq: {str(e)}")
             raise Exception(f"Failed to generate audio: {str(e)}")
@@ -59,14 +59,14 @@ class AudioGenerator:
         communicate = edge_tts.Communicate(script, voice)
         await communicate.save(audio_filename)
         self.logger.info(f"Generated audio file with edge-tts: {audio_filename}")
-        return audio_filename
+        return (audio_filename, None)
 
     async def generate_audio(self, script: str) -> str:
         audio_filename = os.path.join(self.temp_dir, f"audio_{hash(script)}.wav")
         providers = [
-            ("Groq", self._generate_with_groq),
-            ("ElevenLabs", self._generate_with_eleven_labs),
             ("EdgeTTS", self._generate_with_edge_tts),
+            # ("Groq", self._generate_with_groq),
+            # ("ElevenLabs", self._generate_with_eleven_labs),
         ]
         errors = []
 
