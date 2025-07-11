@@ -383,11 +383,11 @@ async def run_ffmpeg(cmd: List[str]):
 # ---- 5. Main Modal Function ----
 @app.function(
     cpu=4,
-    memory=2048,
+    memory=1024,
     retries=1,
     secrets=[modal.Secret.from_name("r2-credentials")],
     timeout=900,
-    scaledown_window=300,
+    scaledown_window=200,
 )
 async def generate_video(
     image_urls: List[str],
@@ -409,7 +409,7 @@ async def generate_video(
             subtitle_path = await fetch_file(
                 session, subtitle_url, "subtitles.srt", asyncio.Semaphore(1)
             )
-            
+
         if not audio_path:
             raise Exception("Failed to download audio.")
         if not subtitle_path:
