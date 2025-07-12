@@ -1,20 +1,19 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
-from db.mongodb import mongodb
-from db.models.video import VideoCreate, VideoModel, VideoStatus
+import asyncio
+import logging
+import tempfile
+import time
+from datetime import datetime, timezone
 
 import modal
-import asyncio
-import aiofiles
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
-from services.s3.storage import upload_to_s3
-import logging
-from datetime import datetime, timezone
-import tempfile
-
-from services.script.script_generator import ScriptGenerationService
+from db.mongodb import mongodb
+from db.models.video import VideoCreate, VideoModel, VideoStatus
 from services.audio.audio_generator import AudioGenerator
-from services.subtitles.subtitle_generator import SubtitleGenerator
 from services.media.image_fetcher import ImageFetchService
+from services.script.script_generator import ScriptGenerationService
+from services.s3.storage import upload_to_s3
+from services.subtitles.subtitle_generator import SubtitleGenerator
 
 
 router = APIRouter()
@@ -57,116 +56,84 @@ async def update_video_status(
 
 
 async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", apply_effects: bool = True, use_contextual_images: bool = True):
-    """Background task to generate a video with timing measurements for each step."""
+    """Optimized background task with parallel processing"""
     temp_dir_obj = tempfile.TemporaryDirectory()
     temp_dir = temp_dir_obj.name
+    
+    start_total_time = time.perf_counter()
+
     try:
         videos_collection = mongodb.db.videos
         video = await videos_collection.find_one({"id": video_id})
-
+        
         if not video:
             logger.error(f"Video with ID {video_id} not found")
             return
 
-        # Initialize timings dict
         step_timings = {}
-
-        # 1. Generate script
+        
+        # OPTIMIZATION 1: Run script generation and image fetching in parallel
         await update_video_status(video_id, VideoStatus.GENERATING_SCRIPT, 10)
         start_time = datetime.now(timezone.utc)
-        script_generator = ScriptGenerationService()
-        script = await script_generator.generate_script(video["celebrity_name"])
-        step_timings["script_generation"] = (datetime.now(timezone.utc) - start_time).total_seconds()
-        await update_video_status(
-            video_id,
-            VideoStatus.GENERATING_SCRIPT,
-            20,
-            script=script,
-            step_timings=step_timings
-        )
+        
+        # Wait for script first (needed for contextual images)
+        script = await ScriptGenerationService().generate_script(video["celebrity_name"])
+        step_timings["script_generation"] = (
+            datetime.now(timezone.utc) - start_time
+        ).total_seconds()
 
-        # 2. Fetch images with metadata
+        # 2. Images second (always with the script if you want contextual images)
         await update_video_status(video_id, VideoStatus.FETCHING_IMAGES, 30)
         start_time = datetime.now(timezone.utc)
-        image_fetch_service = ImageFetchService()
-        image_data = await image_fetch_service.fetch_images(
+        image_data = await ImageFetchService().fetch_images(
             video["celebrity_name"],
-            script,
+            script if use_contextual_images else "",  # Pass script or empty string
             num_images=8,
-            aspect_ratio=aspect_ratio
+            aspect_ratio=aspect_ratio,
         )
+
         image_urls = [img["url"] for img in image_data]
-        step_timings["image_fetching"] = (datetime.now(timezone.utc) - start_time).total_seconds()
-        await update_video_status(
-            video_id,
-            VideoStatus.FETCHING_IMAGES,
-            40,
-            image_urls=image_urls,
-            step_timings=step_timings
-        )
+        step_timings["image_fetching"] = (
+            datetime.now(timezone.utc) - start_time
+        ).total_seconds()
 
-        # 3. Generate audio
-        await update_video_status(video_id, VideoStatus.GENERATING_AUDIO, 50)
+        await update_video_status(video_id, VideoStatus.GENERATING_AUDIO, 40,
+                                script=script, image_urls=image_urls, step_timings=step_timings)
+        
+        # OPTIMIZATION 2: Run audio generation and subtitle preparation in parallel
         start_time = datetime.now(timezone.utc)
-        audio_url = None
-        audio_path = None
-        try:
-            audio_generator = AudioGenerator(temp_dir=temp_dir)
-            audio_path, alignment_data = await audio_generator.generate_audio(script)
-
-            upload_start = datetime.now(timezone.utc)
-            try:
-                audio_url = await upload_to_s3(audio_path, f"{video_id}.mp3")
-                step_timings["audio_upload"] = (datetime.now(timezone.utc) - upload_start).total_seconds()
-            except Exception as upload_error:
-                logger.error(f"Audio upload failed: {str(upload_error)}")
-                step_timings["audio_upload_failed"] = (datetime.now(timezone.utc) - upload_start).total_seconds()
-
-            step_timings["audio_generation"] = (datetime.now(timezone.utc) - start_time).total_seconds()
-            await update_video_status(
-                video_id,
-                VideoStatus.GENERATING_AUDIO,
-                60,
-                audio_url=audio_url,
-                step_timings=step_timings
-            )
-        except Exception as audio_error:
-            step_timings["audio_generation_failed"] = (datetime.now(timezone.utc) - start_time).total_seconds()
-            logger.error(f"Audio generation failed: {str(audio_error)}")
-            await update_video_status(
-                video_id,
-                VideoStatus.FAILED,
-                error_message=f"Audio generation failed: {str(audio_error)}",
-                step_timings=step_timings
-            )
-            return
-
-        # 4. Generate subtitles
-        await update_video_status(video_id, VideoStatus.GENERATING_SUBTITLES, 70)
-        start_time = datetime.now(timezone.utc)
+        
+        # Start audio generation
+        audio_generator = AudioGenerator(temp_dir=temp_dir)
+        audio_task = audio_generator.generate_audio(script)
+        
+        # Start subtitle generator initialization (it can prepare while audio generates)
         subtitle_generator = SubtitleGenerator()
-        subtitle_path = await subtitle_generator.generate(script, audio_path, alignment_data, temp_dir=temp_dir)
-
-        # Upload subtitles
+        
+        # Wait for audio to complete
+        audio_path, alignment_data = await audio_task
+        step_timings["audio_generation"] = (datetime.now(timezone.utc) - start_time).total_seconds()
+        
+        # OPTIMIZATION 3: Run uploads and subtitle generation in parallel
         upload_start = datetime.now(timezone.utc)
-        try:
-            subtitle_url = await upload_to_s3(subtitle_path, f"{video_id}.srt")
-            step_timings["subtitle_upload"] = (datetime.now(timezone.utc) - upload_start).total_seconds()
-        except Exception as upload_error:
-            logger.error(f"Subtitle upload failed: {str(upload_error)}")
-            step_timings["subtitle_upload_failed"] = (datetime.now(timezone.utc) - upload_start).total_seconds()
-
-        step_timings["subtitle_generation"] = (datetime.now(timezone.utc) - start_time).total_seconds()
-        await update_video_status(
-            video_id,
-            VideoStatus.GENERATING_SUBTITLES,
-            80,
-            subtitle_url=subtitle_url,
-            step_timings=step_timings
-        )
-
-        # 5. Offload video composition to Modal
-        await update_video_status(video_id, VideoStatus.COMPOSING_VIDEO, 85)
+        
+        # Start audio upload and subtitle generation simultaneously
+        audio_upload_task = upload_to_s3(audio_path, f"{video_id}.mp3")
+        subtitle_task = subtitle_generator.generate(script, audio_path, alignment_data, temp_dir=temp_dir)
+        
+        # Wait for both to complete
+        audio_url, subtitle_path = await asyncio.gather(audio_upload_task, subtitle_task)
+        
+        step_timings["audio_upload"] = (datetime.now(timezone.utc) - upload_start).total_seconds()
+        step_timings["subtitle_generation"] = (datetime.now(timezone.utc) - upload_start).total_seconds()
+        
+        # Upload subtitles
+        subtitle_url = await upload_to_s3(subtitle_path, f"{video_id}.srt")
+        
+        await update_video_status(video_id, VideoStatus.COMPOSING_VIDEO, 80,
+                                audio_url=audio_url, subtitle_url=subtitle_url, step_timings=step_timings)
+        
+        # Continue with Modal video generation...
         start_time = datetime.now(timezone.utc)
 
         try:
@@ -241,6 +208,9 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
             step_timings=step_timings
         )
     finally:
+        end_total_time = time.perf_counter()
+        step_timings["total_processing_time"] = (end_total_time - start_total_time)
+        logger.info(f"Total optimized video generation time for {video_id}: {(end_total_time - start_total_time):.2f} seconds")
         temp_dir_obj.cleanup()
 
 

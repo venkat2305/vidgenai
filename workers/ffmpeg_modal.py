@@ -26,7 +26,7 @@ image = (
     )
 )
 
-app = modal.App("video-generator-optimized", image=image)
+app = modal.App("video-generator", image=image)
 logger = logging.getLogger("vidgenai.modal_worker")
 
 
