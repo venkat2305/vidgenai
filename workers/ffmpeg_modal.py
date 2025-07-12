@@ -11,6 +11,7 @@ from typing import List, Tuple, Dict, Optional, Any
 import io
 import hashlib
 from datetime import datetime
+import time # Import time for accurate timing
 
 
 # ---- 1. Optimized Image with Minimal Dependencies ----
@@ -291,6 +292,9 @@ async def generate_optimized_video(
 ) -> Dict[str, Any]:
     """Main function to generate video with optimizations"""
     
+    overall_start_time = time.time() # Start timing the entire process
+    timings = {}
+    
     with tempfile.TemporaryDirectory() as temp_dir:
         # Change to temp directory for simpler paths
         original_cwd = os.getcwd()
@@ -298,6 +302,7 @@ async def generate_optimized_video(
         
         try:
             # Download audio and subtitles concurrently
+            start_time = time.time()
             async with httpx.AsyncClient(timeout=60.0) as client:
                 print("Downloading audio and subtitles concurrently")
                 audio_response = await client.get(audio_url)
@@ -315,10 +320,13 @@ async def generate_optimized_video(
                 
                 async with aiofiles.open(subtitle_path, "wb") as f:
                     await f.write(subtitle_response.content)
-            
+            end_time = time.time()
+            timings["audio_subtitle_download"] = end_time - start_time
             print("Downloaded audio and subtitles")
+            logger.info(f"Audio and subtitle download took {timings['audio_subtitle_download']:.2f} seconds")
             
             # Get audio duration
+            start_time = time.time()
             probe_cmd = [
                 "ffprobe", "-v", "error", "-show_entries", 
                 "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", 
@@ -329,17 +337,21 @@ async def generate_optimized_video(
             )
             stdout, _ = await proc.communicate()
             total_duration = float(stdout.decode().strip())
-            
+            end_time = time.time()
+            timings["get_audio_duration"] = end_time - start_time
             print("Got audio duration")
+            logger.info(f"Getting audio duration took {timings['get_audio_duration']:.2f} seconds")
             
             # Preprocess images
+            start_time = time.time()
             image_paths = await preprocess_images(image_urls, temp_dir)
-            
+            end_time = time.time()
+            timings["image_preprocessing"] = end_time - start_time
             print("Preprocessed images")
+            logger.info(f"Image preprocessing took {timings['image_preprocessing']:.2f} seconds")
             
             # Calculate duration per image
             durations = [total_duration / len(image_paths)] * len(image_paths)
-            
             print("Calculated duration per image")
             
             # Generate video using single-pass approach
@@ -348,6 +360,7 @@ async def generate_optimized_video(
             
             print("Generated video using single-pass approach")
             
+            start_time = time.time()
             _, generation_time = await generator.generate_video(
                 image_paths=image_paths,
                 durations=durations,
@@ -357,10 +370,11 @@ async def generate_optimized_video(
                 video_aspect=video_aspect,
                 apply_effects=apply_effects
             )
+            end_time = time.time()
+            timings["video_generation"] = end_time - start_time
             
             print(f"Video generated in {generation_time:.2f} seconds")
-            
-            logger.info(f"Video generated in {generation_time:.2f} seconds")
+            logger.info(f"Video generation completed in {timings['video_generation']:.2f} seconds")
             
             # Use the first image as the thumbnail
             thumbnail_path = image_paths[0]
@@ -375,17 +389,42 @@ async def generate_optimized_video(
             video_key = f"videos/{timestamp}_{script_hash}.mp4"
             thumb_key = f"thumbnails/{timestamp}_{script_hash}.jpg"
             
+            start_time = time.time()
             video_url = await upload_to_r2(video_path, video_key)
+            end_time = time.time()
+            timings["video_upload_to_r2"] = end_time - start_time
+            
+            start_time = time.time()
             thumb_url = await upload_to_r2(
                 thumbnail_path, thumb_key
             )
+            end_time = time.time()
+            timings["thumbnail_upload_to_r2"] = end_time - start_time
+            
             print("Video generated successfully")
+            logger.info("--- Video Generation Timings Summary ---")
+            for step, duration in timings.items():
+                logger.info(f"{step.replace('_', ' ').title()}: {duration:.2f} seconds")
+            logger.info("----------------------------------------")
+            
+            overall_end_time = time.time() # End timing the entire process
+            total_process_time = overall_end_time - overall_start_time
+            
+            # Calculate total generation time from all individual timings
+            total_video_generation_time = sum(timings.values())
+            
+            logger.info(f"Total process time: {total_process_time:.2f} seconds")
+            logger.info(f"Total effective video generation time (sum of steps): {total_video_generation_time:.2f} seconds")
+            
             return {
                 "success": True,
                 "video_url": video_url,
                 "thumbnail_url": thumb_url,
                 "duration": total_duration,
-                "generation_time": generation_time
+                "generation_time": generation_time,
+                "timings_summary": timings, # Include timings in the result
+                "total_process_time": total_process_time, # Total time for the entire function execution
+                "total_video_generation_time": total_video_generation_time # Sum of all individual timed steps
             }
             
         finally:
