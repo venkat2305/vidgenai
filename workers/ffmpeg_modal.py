@@ -36,10 +36,8 @@ async def upload_to_r2(file_path: str, object_key: str) -> str:
     R2_ACCESS_KEY_ID = os.environ["R2_ACCESS_KEY_ID"]
     R2_SECRET_ACCESS_KEY = os.environ["R2_SECRET_ACCESS_KEY"]
     R2_BUCKET_NAME = os.environ["R2_BUCKET_NAME"]
-    R2_ENDPOINT_URL = (
-        "https://19614bd5a1eee4fc6adc1abfe9a99795.r2.cloudflarestorage.com"
-    )
-    R2_PUBLIC_URL_BASE = "https://pub-be0c2eb5ab24406292572a49239fd150.r2.dev"
+    R2_ENDPOINT_URL = os.environ["R2_ENDPOINT_URL"]
+    R2_PUBLIC_URL_BASE = os.environ["R2_PUBLIC_URL_BASE"]
 
     try:
         if not os.path.exists(file_path):
