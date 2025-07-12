@@ -3,10 +3,54 @@ import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any
 import re
+from functools import wraps
 
 from core.config import settings
+from db.mongodb import mongodb
 
 logger = logging.getLogger("vidgenai.image_fetcher")
+
+
+def cache_image_fetch(func):
+    """
+    Decorator to cache the results of image fetching in MongoDB.
+    """
+
+    @wraps(func)
+    async def wrapper(
+        self,
+        search_term: str,
+        session: aiohttp.ClientSession,
+        aspect_ratio: str = "9:16",
+    ):
+        normalized_search_term = search_term.lower()
+
+        # Check cache first
+        cached_data = await mongodb.db.image_cache.find_one(
+            {"search_term": normalized_search_term, "aspect_ratio": aspect_ratio}
+        )
+        if cached_data:
+            logger.info(f"Cache hit for search term: '{search_term}'")
+            return cached_data["results"]
+
+        logger.info(f"Cache miss for search term: '{search_term}'. Fetching from API.")
+
+        # If not in cache, call the actual fetcher function
+        results = await func(self, search_term, session, aspect_ratio)
+
+        # Store results in cache if any were found
+        if results:
+            await mongodb.db.image_cache.insert_one(
+                {
+                    "search_term": normalized_search_term,
+                    "aspect_ratio": aspect_ratio,
+                    "results": results,
+                }
+            )
+
+        return results
+
+    return wrapper
 
 
 class ImageFetcher(ABC):
@@ -21,6 +65,7 @@ class ImageFetcher(ABC):
 
 
 class SerpApiImageFetcher(ImageFetcher):
+    @cache_image_fetch
     async def fetch_images(
         self,
         search_term: str,
@@ -49,21 +94,28 @@ class SerpApiImageFetcher(ImageFetcher):
                     width = img.get("original_width", 0)
                     height = img.get("original_height", 0)
                     if width >= 400 and height >= 400:
-                        processed_images.append({
-                            "url": img["original"],
-                            "width": width,
-                            "height": height,
-                            "aspect_ratio": ImageUtils.calculate_aspect_ratio(width, height),
-                            "is_vertical": height > width,
-                            "search_term": search_term,
-                        })
+                        processed_images.append(
+                            {
+                                "url": img["original"],
+                                "width": width,
+                                "height": height,
+                                "aspect_ratio": ImageUtils.calculate_aspect_ratio(
+                                    width, height
+                                ),
+                                "is_vertical": height > width,
+                                "search_term": search_term,
+                            }
+                        )
                 return processed_images
             else:
-                logger.error(f"Error fetching images for '{search_term}': {response.status}")
+                logger.error(
+                    f"Error fetching images for '{search_term}': {response.status}"
+                )
                 return []
 
 
 class BraveImageFetcher(ImageFetcher):
+    @cache_image_fetch
     async def fetch_images(
         self,
         search_term: str,
@@ -78,7 +130,7 @@ class BraveImageFetcher(ImageFetcher):
         }
         params = {
             "q": search_term,
-            "count": 20,  # You can adjust the count as needed
+            "count": 20,
             "safesearch": "strict",
             "search_lang": "en",
             "spellcheck": 1,
@@ -87,7 +139,6 @@ class BraveImageFetcher(ImageFetcher):
         async with session.get(base_url, headers=headers, params=params) as response:
             if response.status == 200:
                 data = await response.json()
-                # Brave returns image results in the "results" key.
                 results = data.get("results", [])
                 processed_images = []
                 for result in results:
@@ -95,18 +146,20 @@ class BraveImageFetcher(ImageFetcher):
                     image_url = properties.get("url")
                     if not image_url:
                         continue
-                    # Brave's response might not include dimensions.
-                    # Here, we assign default dimensions.
                     width = 600
                     height = 600
-                    processed_images.append({
-                        "url": image_url,
-                        "width": width,
-                        "height": height,
-                        "aspect_ratio": ImageUtils.calculate_aspect_ratio(width, height),
-                        "is_vertical": height > width,
-                        "search_term": search_term,
-                    })
+                    processed_images.append(
+                        {
+                            "url": image_url,
+                            "width": width,
+                            "height": height,
+                            "aspect_ratio": ImageUtils.calculate_aspect_ratio(
+                                width, height
+                            ),
+                            "is_vertical": height > width,
+                            "search_term": search_term,
+                        }
+                    )
                 return processed_images
             else:
                 logger.error(
@@ -128,7 +181,7 @@ class ImageFetcherFactory:
 
 class ImageFetchService:
     def __init__(self):
-        self.fetcher = ImageFetcherFactory.get_fetcher('serp')
+        self.fetcher = ImageFetcherFactory.get_fetcher("serp")
 
     async def fetch_images(
         self,
@@ -138,16 +191,19 @@ class ImageFetchService:
         aspect_ratio: str = "9:16",
     ) -> List[Dict[str, Any]]:
         try:
-            search_terms = ImageUtils.extract_search_terms(celebrity_name, script, num_images)
+            search_terms = ImageUtils.extract_search_terms(
+                celebrity_name, script, num_images
+            )
             image_results = []
             async with aiohttp.ClientSession() as session:
                 for term in search_terms:
-                    images = await self.fetcher.fetch_images(term, session, aspect_ratio)
+                    images = await self.fetcher.fetch_images(
+                        term, session, aspect_ratio
+                    )
                     image_results.extend(images)
                     if len(image_results) >= num_images * 2:
                         break
 
-                # If not enough images, fetch additional generic ones
                 if len(image_results) < num_images:
                     generic_terms = [
                         f"{celebrity_name} portrait vertical",
@@ -161,14 +217,15 @@ class ImageFetchService:
                         additional_images = await self.fetcher.fetch_images(
                             term, session, aspect_ratio
                         )
-                        # Avoid duplicates
                         for img in additional_images:
                             if not any(
                                 result["url"] == img["url"] for result in image_results
                             ):
                                 image_results.append(img)
 
-            sorted_images = ImageUtils.sort_images_by_aspect_ratio_match(image_results, aspect_ratio)
+            sorted_images = ImageUtils.sort_images_by_aspect_ratio_match(
+                image_results, aspect_ratio
+            )
             logger.info(f"Fetched {len(sorted_images)} images for {celebrity_name}")
             return sorted_images[:num_images]
 
