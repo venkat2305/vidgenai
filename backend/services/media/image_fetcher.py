@@ -128,7 +128,7 @@ class ImageFetcherFactory:
 
 class ImageFetchService:
     def __init__(self):
-        self.fetcher = ImageFetcherFactory.get_fetcher('brave')
+        self.fetcher = ImageFetcherFactory.get_fetcher('serp')
 
     async def fetch_images(
         self,
