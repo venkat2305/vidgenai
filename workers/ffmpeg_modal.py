@@ -1,34 +1,31 @@
 import modal
 import os
-import boto3
-from botocore.exceptions import ClientError
-from typing import List, Tuple, Dict, Any, Optional
 import tempfile
 import logging
 import asyncio
-import aiohttp
+import httpx
 import aiofiles
-import shutil
-import numpy as np
-import cv2
-from datetime import datetime
+from PIL import Image
 import random
+from typing import List, Tuple, Dict, Optional, Any
+import io
+import hashlib
+from datetime import datetime
 
 
-# ---- 1. Build an image with all necessary dependencies ----
+# ---- 1. Optimized Image with Minimal Dependencies ----
 image = (
     modal.Image.debian_slim()
     .apt_install("ffmpeg")
     .pip_install(
-        "boto3",
-        "opencv-python-headless",
-        "numpy",
-        "aiohttp",
-        "aiofiles",
+        "Pillow",      # Lightweight image processing (50MB vs OpenCV's 150MB)
+        "httpx",       # Async HTTP client (5MB vs boto3's 60MB)
+        "aiofiles",    # Async file operations
+        "boto3",       # AWS SDK for R2 uploads
     )
 )
 
-app = modal.App("video-generator", image=image)
+app = modal.App("video-generator-optimized", image=image)
 logger = logging.getLogger("vidgenai.modal_worker")
 
 
@@ -47,6 +44,9 @@ async def upload_to_r2(file_path: str, object_key: str) -> str:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
+        # Import boto3 here to avoid issues with async
+        import boto3
+        
         r2_client = boto3.client(
             's3',
             endpoint_url=R2_ENDPOINT_URL,
@@ -68,326 +68,338 @@ async def upload_to_r2(file_path: str, object_key: str) -> str:
         raise
 
 
-# ---- 3. Video Effects Logic (from effects.py) ----
-class VideoEffect:
-    def apply(self, frame, t, duration):
-        return frame
-
-
-class ZoomEffect(VideoEffect):
-    def __init__(self, zoom_start: float = 1.0, zoom_end: float = 1.2):
-        self.zoom_start = zoom_start
-        self.zoom_end = zoom_end
-
-    def apply(self, frame, t, duration):
-        h, w = frame.shape[:2]
-        zoom_factor = (
-            self.zoom_start + (self.zoom_end - self.zoom_start) * (t / duration)
+# ---- 3. Single-Pass Video Generation ----
+class SinglePassVideoGenerator:
+    def __init__(self):
+        pass
+        
+    async def _run_command(self, cmd: List[str]) -> str:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
-        new_h, new_w = int(h * zoom_factor), int(w * zoom_factor)
-        y1, x1 = max(0, (new_h - h) // 2), max(0, (new_w - w) // 2)
-        y2, x2 = y1 + h, x1 + w
-        resized = cv2.resize(
-            frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR
-        )
-        if zoom_factor >= 1.0:
-            result = resized[y1:y2, x1:x2]
-            return cv2.resize(result, (w, h), interpolation=cv2.INTER_LINEAR)
-        else:
-            result = np.zeros_like(frame)
-            y_offset = (h - new_h) // 2
-            x_offset = (w - new_w) // 2
-            result[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = resized
-            return result
-
-
-def get_random_effect() -> VideoEffect:
-    effects = [
-        {"start": 1.0, "end": 1.2},  # Zoom in
-        {"start": 1.15, "end": 1.0},  # Zoom out
-    ]
-    zoom = random.choice(effects)
-    return ZoomEffect(zoom["start"], zoom["end"])
-
-
-# ---- 4. Video Composition Logic (from composer.py) ----
-async def compose_video(
-    script: str,
-    image_data: List[str],  # Changed from List[Dict[str, Any]] to List[str]
-    audio_path: str,
-    subtitle_path: str,
-    video_aspect: str = "9:16",
-    apply_effects: bool = True,
-    temp_dir: Optional[str] = None,
-) -> Tuple[str, str, float]:
-    temp_dir = temp_dir or tempfile.gettempdir()
-    video_filename = os.path.join(temp_dir, f"video_{hash(script)}.mp4")
-    thumbnail_filename = os.path.join(
-        temp_dir, f"thumbnail_{hash(script)}.jpg"
-    )
-
-    video_width, video_height = get_video_dimensions(video_aspect)
-
-    # Since image_data is now List[str], we can use it directly
-    image_urls = image_data
-    unique_urls = sorted(list(set(image_urls)))
-    image_paths = await download_images(unique_urls, temp_dir)
-
-    if not image_paths:
-        raise Exception("No valid images were downloaded.")
-
-    processed_paths = await process_images_for_aspect_ratio(
-        image_paths, video_width, video_height, temp_dir
-    )
-    total_duration = await get_media_duration(audio_path)
-    durations = [total_duration / len(processed_paths)] * len(processed_paths)
-
-    if apply_effects:
-        processed_paths = await apply_visual_effects(
-            processed_paths, durations, video_width, video_height, temp_dir
-        )
-
-    concat_path = os.path.join(temp_dir, f"concat_{hash(script)}.txt")
-    with open(concat_path, "w", encoding="utf-8") as f:
-        if apply_effects:
-            for clip_path in processed_paths:
-                f.write(f"file '{os.path.basename(clip_path)}'\n")
-        else:
-            for img, dur in zip(processed_paths, durations):
-                f.write(f"file '{os.path.basename(img)}'\n")
-                f.write(f"duration {dur}\n")
-            f.write(f"file '{os.path.basename(processed_paths[-1])}'\n")
-
-    video_cmd_args = {
-        "concat_path": concat_path,
-        "audio_path": audio_path,
-        "subtitle_path": subtitle_path,
-        "width": video_width,
-        "height": video_height,
-        "output_path": video_filename,
-    }
-
-    if apply_effects:
-        await generate_final_video_from_clips(**video_cmd_args)
-    else:
-        await generate_final_video(**video_cmd_args)
-
-    first_frame_source = processed_paths[0]
-    if first_frame_source.endswith(('.jpg', '.png', '.jpeg')):
-        shutil.copy(first_frame_source, thumbnail_filename)
-    else:
-        cap = cv2.VideoCapture(first_frame_source)
-        ret, frame = cap.read()
-        if ret:
-            cv2.imwrite(thumbnail_filename, frame)
-        cap.release()
-
-    return video_filename, thumbnail_filename, total_duration
-
-
-async def apply_visual_effects(
-    image_paths: List[str], 
-    durations: List[float], 
-    width: int, 
-    height: int, 
-    temp_dir: str
-) -> List[str]:
-    # Process effects sequentially instead of using ThreadPoolExecutor
-    processed_paths = []
-    for i, (img_path, duration) in enumerate(zip(image_paths, durations)):
-        result_path = await apply_effect_to_image(
-            i, img_path, duration, width, height, temp_dir
-        )
-        processed_paths.append(result_path)
-    return processed_paths
-
-
-async def apply_effect_to_image(
-    index: int, 
-    img_path: str, 
-    duration: float, 
-    width: int, 
-    height: int, 
-    temp_dir: str
-) -> str:
-    output_video = os.path.join(temp_dir, f"effect_segment_{index}.mp4")
-    effect = get_random_effect()
-    img = cv2.imread(img_path)
-    if img is None:
-        return img_path
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            raise Exception(f"Command failed: {stderr.decode()}")
+        return stdout.decode()
     
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_video, fourcc, 30, (width, height))
+    def _get_video_dimensions(self, aspect_ratio: str) -> Tuple[int, int]:
+        dimensions = {
+            "9:16": (1080, 1920),  # Increased resolution for better quality
+            "16:9": (1920, 1080),
+            "1:1": (1080, 1080),
+        }
+        return dimensions.get(aspect_ratio, (1080, 1920))
     
-    frame_count = max(1, int(30 * duration))
-    for i in range(frame_count):
-        t = i / 30
-        frame = effect.apply(img.copy(), t, duration)
-        out.write(frame)
-    out.release()
-    return output_video
-
-
-async def generate_final_video_from_clips(
-    concat_path, audio_path, subtitle_path, width, height, output_path
-):
-    vf_filters = f"subtitles='{subtitle_path}'"
-    cmd = [
-        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_path,
-        "-i", audio_path, "-map", "0:v", "-map", "1:a", "-c:v", "libx264",
-        "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-crf", "35",
-        "-c:a", "aac", "-b:a", "32k", "-vf", vf_filters, "-shortest", 
-        output_path
-    ]
-    await run_ffmpeg(cmd)
-
-
-async def process_images_for_aspect_ratio(
-    images: List[str], 
-    target_width: int, 
-    target_height: int, 
-    temp_dir: str
-) -> List[str]:
-    processed_paths = []
-    for i, img_path in enumerate(images):
-        output_path = os.path.join(
-            temp_dir, f"processed_{i}_{os.path.basename(img_path)}"
-        )
-        try:
-            img = cv2.imread(img_path)
-            if img is None:
-                continue
-            
-            img_h, img_w = img.shape[:2]
-            target_aspect = target_width / target_height
-            img_aspect = img_w / img_h
-            
-            canvas = np.zeros((target_height, target_width, 3), dtype=np.uint8)
-            
-            if abs(img_aspect - target_aspect) < 0.1:
-                resized = cv2.resize(
-                    img, 
-                    (target_width, target_height), 
-                    interpolation=cv2.INTER_LANCZOS4
-                )
-                canvas = resized
-            elif img_aspect > target_aspect:
-                new_w = int(target_height * img_aspect)
-                resized = cv2.resize(
-                    img, 
-                    (new_w, target_height), 
-                    interpolation=cv2.INTER_LANCZOS4
-                )
-                start_x = (new_w - target_width) // 2
-                canvas = resized[:, start_x:start_x+target_width]
-            else:
-                new_h = int(target_width / img_aspect)
-                resized = cv2.resize(
-                    img, 
-                    (target_width, new_h), 
-                    interpolation=cv2.INTER_LANCZOS4
-                )
-                start_y = (target_height - new_h) // 2
-                canvas[start_y:start_y+new_h, :] = resized
-            
-            cv2.imwrite(output_path, canvas)
-            processed_paths.append(output_path)
-        except Exception as e:
-            logger.error(f"Error processing image {img_path}: {e}")
-            shutil.copy(img_path, output_path)
-            processed_paths.append(output_path)
-    return processed_paths
-
-
-async def generate_final_video(
-    concat_path, audio_path, subtitle_path, width, height, output_path
-):
-    vf_filters = f"subtitles='{subtitle_path}'"
-    cmd = [
-        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_path,
-        "-i", audio_path, "-map", "0:v", "-map", "1:a", "-c:v", "libx264",
-        "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-b:v", "800k",
-        "-c:a", "aac", "-b:a", "64k", "-vf", vf_filters, "-shortest", 
-        output_path
-    ]
-    await run_ffmpeg(cmd)
-
-
-def get_video_dimensions(aspect_ratio: str) -> Tuple[int, int]:
-    if aspect_ratio == "9:16":
-        return (480, 854)
-    elif aspect_ratio == "16:9":
-        return (854, 480)
-    else:
-        return (480, 480)
-
-
-async def fetch_file(session, url, path, sem):
-    async with sem:
-        try:
-            async with session.get(url) as resp:
-                if resp.status == 200:
-                    async with aiofiles.open(path, "wb") as f:
-                        await f.write(await resp.read())
-                    return path
-        except Exception as e:
-            logger.error(f"Failed to download {url}: {e}")
-    return None
-
-
-async def download_images(image_urls: List[str], temp_dir: str) -> List[str]:
-    sem = asyncio.Semaphore(10)
-    async with aiohttp.ClientSession() as session:
-        tasks = [
-            fetch_file(
-                session, 
-                url, 
-                os.path.join(temp_dir, f"image_{i}.jpg"), 
-                sem
+    def _build_effect_filter(
+        self, index: int, duration: float, width: int, height: int, 
+        effect_type: str
+    ) -> str:
+        """Build effect filter for a single image"""
+        fps = 30
+        frames = int(duration * fps)
+        
+        # Base scaling and padding
+        base_filter = f"""[{index}:v]
+        scale={width}:{height}:force_original_aspect_ratio=decrease,
+        pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black"""
+        
+        # SAR normalization and pixel format fix
+        post = f",setsar=1,setdar={width}/{height},format=yuv420p"
+        
+        # Add effect based on type
+        if effect_type == "zoom_in":
+            effect = f"""zoompan=z='min(zoom+0.0015,1.3)':
+                       d={frames}:s={width}x{height}:fps={fps}"""
+        elif effect_type == "zoom_out":
+            effect = f"""zoompan=z='if(eq(on,1),1.3,max(1.001,zoom-0.0015))':
+                       d={frames}:s={width}x{height}:fps={fps}"""
+        elif effect_type == "pan_left":
+            effect = f"""zoompan=z='1.2':x='if(gte(on,1),(on-1)*2,0)':
+                       d={frames}:s={width}x{height}:fps={fps}"""
+        elif effect_type == "pan_right":
+            # pan from right edge toward the left by 2 px per frame
+            effect = (
+                "zoompan="
+                "z='1.2':"
+                "x='if(gte(on,1),iw-ow-(on-1)*2,iw-ow)':"
+                f"d={frames}:s={width}x{height}:fps={fps}"
             )
+        else:  # ken_burns - combination
+            effect = f"""zoompan=z='min(zoom+0.001,1.2)':
+                       x='if(gte(zoom,1.2),x+1,x)':y='if(gte(zoom,1.2),y+1,y)':
+                       d={frames}:s={width}x{height}:fps={fps}"""
+        
+        return f"{base_filter},{effect}{post},setpts=PTS-STARTPTS[v{index}]"
+    
+    def _get_random_effect(self) -> str:
+        """Get a random effect type"""
+        effects = ["zoom_in", "zoom_out", "pan_left", "pan_right", "ken_burns"]
+        return random.choice(effects)
+    
+    async def generate_video(
+        self,
+        image_paths: List[str],
+        durations: List[float],
+        audio_path: str,
+        subtitle_path: str,
+        output_path: str,
+        video_aspect: str = "9:16",
+        apply_effects: bool = True
+    ) -> Tuple[str, float]:
+        """Generate video in a single FFmpeg pass"""
+        
+        width, height = self._get_video_dimensions(video_aspect)
+        
+        # Build FFmpeg command
+        cmd = ["ffmpeg", "-y"]
+        
+        # Add inputs
+        filter_parts = []
+        for i, (img_path, duration) in enumerate(zip(image_paths, durations)):
+            cmd.extend(["-loop", "1", "-t", str(duration), "-i", img_path])
+            
+            # Build filter for this image
+            if apply_effects:
+                effect_type = self._get_random_effect()
+                filter_parts.append(
+                    self._build_effect_filter(
+                        i, duration, width, height, effect_type
+                    )
+                )
+            else:
+                # Simple scale and pad
+                filter_parts.append(f"""[{i}:v]
+                    scale={width}:{height}:force_original_aspect_ratio=decrease,
+                    pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,
+                    fps=30,setsar=1,setdar={width}/{height},format=yuv420p,
+                    setpts=PTS-STARTPTS[v{i}]""")
+        
+        # Add audio input
+        audio_index = len(image_paths)
+        cmd.extend(["-i", audio_path])
+        
+        # Build concatenation filter
+        concat_inputs = "".join([f"[v{i}]" for i in range(len(image_paths))])
+        concat_filter = (
+            f"{concat_inputs}concat=n={len(image_paths)}:v=1:a=0[outv]"
+        )
+        
+        # Add subtitles
+        subtitle_filter = (
+            f"[outv]subtitles='{subtitle_path}':force_style="
+            f"'Fontsize=24,PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,"
+            f"Outline=2,Alignment=2,MarginV=40'[final]"
+        )
+        
+        # Combine all filters
+        filter_complex = ";".join(
+            filter_parts + [concat_filter, subtitle_filter]
+        )
+        
+        # Add filter complex to command
+        cmd.extend(["-filter_complex", filter_complex])
+        
+        # Map outputs
+        cmd.extend(["-map", "[final]", "-map", f"{audio_index}:a"])
+        
+        # CPU-only output settings
+        cmd.extend([
+            "-c:v", "libx264",
+            "-preset", "fast",  # Better than ultrafast
+            "-crf", "23",       # Good quality
+            "-tune", "film",    # Optimize for video content
+        ])
+        
+        # Audio settings
+        cmd.extend([
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-ar", "44100",
+            "-shortest",  # Match video length to shortest input
+            output_path
+        ])
+        
+        print("Running FFmpeg command")
+        # Run the command
+        start_time = asyncio.get_event_loop().time()
+        await self._run_command(cmd)
+        duration = asyncio.get_event_loop().time() - start_time
+        
+        print(f"FFmpeg command completed in {duration:.2f} seconds")
+        
+        return output_path, duration
+
+
+# ---- 4. Optimized Image Preprocessing ----
+async def preprocess_images(image_urls: List[str], temp_dir: str) -> List[str]:
+    """Download and preprocess images efficiently"""
+    
+    async def download_and_process(
+        session: httpx.AsyncClient, url: str, index: int
+    ) -> Optional[str]:
+        try:
+            output_path = os.path.join(temp_dir, f"img_{index:03d}.jpg")
+            
+            # Download image
+            response = await session.get(url)
+            response.raise_for_status()
+            
+            # Process with Pillow (more efficient than OpenCV for basic ops)
+            img = Image.open(io.BytesIO(response.content))
+            
+            # Convert to RGB if necessary
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            
+            # Save as optimized JPEG
+            img.save(output_path, "JPEG", quality=95, optimize=True)
+            
+            logger.info(f"Downloaded and processed image {index} from {url}")
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"Failed to process image {url}: {e}")
+            return None
+    
+    # Download all images concurrently
+    async with httpx.AsyncClient(timeout=30.0) as session:
+        tasks = [
+            download_and_process(session, url, i) 
             for i, url in enumerate(image_urls)
         ]
         results = await asyncio.gather(*tasks)
-    return [r for r in results if r]
+    
+    # Filter out None values
+    valid_paths = [path for path in results if path is not None]
+    
+    if not valid_paths:
+        raise Exception("No images could be downloaded")
+    
+    return valid_paths
 
 
-async def get_media_duration(path: str) -> float:
-    cmd = [
-        "ffprobe", "-v", "error", "-show_entries", "format=duration", 
-        "-of", "default=noprint_wrappers=1:nokey=1", path
-    ]
-    proc = await asyncio.create_subprocess_exec(
-        *cmd, 
-        stdout=asyncio.subprocess.PIPE, 
-        stderr=asyncio.subprocess.PIPE
-    )
-    out, err = await proc.communicate()
-    if proc.returncode != 0:
-        raise Exception(f"ffprobe failed: {err.decode()}")
-    return float(out.decode().strip())
+# ---- 5. Main Video Generation Function ----
+async def generate_optimized_video(
+    image_urls: List[str],
+    audio_url: str,
+    subtitle_url: str,
+    script: str,
+    video_aspect: str = "9:16",
+    apply_effects: bool = True
+) -> Dict[str, Any]:
+    """Main function to generate video with optimizations"""
+    
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Change to temp directory for simpler paths
+        original_cwd = os.getcwd()
+        os.chdir(temp_dir)
+        
+        try:
+            # Download audio and subtitles concurrently
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                print("Downloading audio and subtitles concurrently")
+                audio_response = await client.get(audio_url)
+                subtitle_response = await client.get(subtitle_url)
+                
+                audio_response.raise_for_status()
+                subtitle_response.raise_for_status()
+                
+                # Save files
+                audio_path = "audio.mp3"
+                subtitle_path = "subtitles.srt"
+                
+                async with aiofiles.open(audio_path, "wb") as f:
+                    await f.write(audio_response.content)
+                
+                async with aiofiles.open(subtitle_path, "wb") as f:
+                    await f.write(subtitle_response.content)
+            
+            print("Downloaded audio and subtitles")
+            
+            # Get audio duration
+            probe_cmd = [
+                "ffprobe", "-v", "error", "-show_entries", 
+                "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", 
+                audio_path
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *probe_cmd, stdout=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await proc.communicate()
+            total_duration = float(stdout.decode().strip())
+            
+            print("Got audio duration")
+            
+            # Preprocess images
+            image_paths = await preprocess_images(image_urls, temp_dir)
+            
+            print("Preprocessed images")
+            
+            # Calculate duration per image
+            durations = [total_duration / len(image_paths)] * len(image_paths)
+            
+            print("Calculated duration per image")
+            
+            # Generate video using single-pass approach
+            generator = SinglePassVideoGenerator()
+            video_path = "output.mp4"
+            
+            print("Generated video using single-pass approach")
+            
+            _, generation_time = await generator.generate_video(
+                image_paths=image_paths,
+                durations=durations,
+                audio_path=audio_path,
+                subtitle_path=subtitle_path,
+                output_path=video_path,
+                video_aspect=video_aspect,
+                apply_effects=apply_effects
+            )
+            
+            print(f"Video generated in {generation_time:.2f} seconds")
+            
+            logger.info(f"Video generated in {generation_time:.2f} seconds")
+            
+            # Use the first image as the thumbnail
+            thumbnail_path = image_paths[0]
+            
+            print("Using the first image as thumbnail")
+            
+            # Upload to R2
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Use deterministic hash for consistent naming
+            script_hash = hashlib.md5(script.encode()).hexdigest()[:8]
+            video_key = f"videos/{timestamp}_{script_hash}.mp4"
+            thumb_key = f"thumbnails/{timestamp}_{script_hash}.jpg"
+            
+            video_url = await upload_to_r2(video_path, video_key)
+            thumb_url = await upload_to_r2(
+                thumbnail_path, thumb_key
+            )
+            print("Video generated successfully")
+            return {
+                "success": True,
+                "video_url": video_url,
+                "thumbnail_url": thumb_url,
+                "duration": total_duration,
+                "generation_time": generation_time
+            }
+            
+        finally:
+            os.chdir(original_cwd)
 
 
-async def run_ffmpeg(cmd: List[str]):
-    proc = await asyncio.create_subprocess_exec(
-        *cmd, 
-        stdout=asyncio.subprocess.PIPE, 
-        stderr=asyncio.subprocess.PIPE
-    )
-    _, err = await proc.communicate()
-    if proc.returncode != 0:
-        raise Exception(
-            f"ffmpeg failed with exit code {proc.returncode}: {err.decode()}"
-        )
-
-
-# ---- 5. Main Modal Function ----
+# ---- 6. Modal Function ----
 @app.function(
-    cpu=4,
-    memory=1024,
-    retries=1,
+    cpu=8.0,        # More CPU for CPU-only processing
+    memory=4096,    # More memory for CPU processing
+    retries=0,
     secrets=[modal.Secret.from_name("r2-credentials")],
     timeout=900,
-    scaledown_window=200,
+    max_containers=20,
 )
 async def generate_video(
     image_urls: List[str],
@@ -397,117 +409,52 @@ async def generate_video(
     video_aspect: str = "9:16",
     apply_effects: bool = True,
 ):
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Change working dir for simplicity with ffmpeg concat files
-        os.chdir(temp_dir)
-
-        # Download audio and subtitles
-        async with aiohttp.ClientSession() as session:
-            audio_path = await fetch_file(
-                session, audio_url, "audio.mp3", asyncio.Semaphore(1)
-            )
-            subtitle_path = await fetch_file(
-                session, subtitle_url, "subtitles.srt", asyncio.Semaphore(1)
-            )
-
-        if not audio_path:
-            raise Exception("Failed to download audio.")
-        if not subtitle_path:
-            raise Exception("Failed to download subtitles.")
-
-        # Create video
-        video_path, thumb_path, _ = await compose_video(
-            script, image_urls, audio_path, subtitle_path, 
-            video_aspect, apply_effects, temp_dir
+    """Modal endpoint for video generation"""
+    
+    logger.info("Starting CPU-only video generation")
+    
+    try:
+        result = await generate_optimized_video(
+            image_urls=image_urls,
+            audio_url=audio_url,
+            subtitle_url=subtitle_url,
+            script=script,
+            video_aspect=video_aspect,
+            apply_effects=apply_effects
         )
-
-        # Upload to R2
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        video_key = f"{timestamp}_{os.path.basename(video_path)}"
-        thumb_key = f"{timestamp}_{os.path.basename(thumb_path)}"
-
-        video_url = await upload_to_r2(video_path, video_key)
-        thumb_url = await upload_to_r2(thumb_path, thumb_key)
-
+        
+        logger.info(f"Video generation completed: {result}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Video generation failed: {e}")
         return {
-            "success": True,
-            "video_url": video_url,
-            "thumbnail_url": thumb_url,
+            "success": False,
+            "error": str(e)
         }
 
 
-# ---- 6. Local entry-point for testing ----
+# ---- 7. Test Entrypoint ----
 @app.local_entrypoint()
 async def main():
-    # This is a test function. Replace with actual data.
-    # Existing async test harness
-    test_image_urls = [
-        "https://www.sportphotogallery.com/content/images/cmsfiles/"
-        "product/24678/24947-list.jpg",
-        "https://media.gettyimages.com/id/1076435316/photo/"
-        "adelaide-australia-virat-kohli-of-india-poses-during-the-india-"
-        "test-squad-portrait-session-on.jpg?s=612x612&w=0&k=20&c="
-        "RrgJMrI-5D4fvi5w8w8t4Lt42y2cy2T9Mb8k6fFmrTs=",
-        "https://media.gettyimages.com/id/1495889200/photo/"
-        "london-england-virat-kohli-of-india-poses-for-a-portrait-"
-        "prior-to-the-icc-world-test.jpg?s=612x612&w=0&k=20&c="
-        "SbcF6ggb7Zd5bA_bSyOsUc0xnYlG9qSgaZrXC0gFkQE=",
-        "https://c.ndtvimg.com/2023-03/"
-        "hqotnscg_virat-kohli_625x300_26_March_23.jpg?downsize=773:435",
-        "https://media.gettyimages.com/id/1495889131/photo/"
-        "london-england-virat-kohli-of-india-poses-for-a-portrait-"
-        "prior-to-the-icc-world-test.jpg?s=612x612&w=0&k=20&c="
-        "6Oc03AHKNf9JefLvY1Atb6UJVKWvdNwgs46ZaDIN6Mg=",
-        "https://img1.hscicdn.com/image/upload/f_auto,t_ds_w_1280,q_80/"
-        "lsci/db/PICTURES/CMS/289000/289002.jpg",
-        "https://media.gettyimages.com/id/1151434004/photo/"
-        "london-england-virat-kohli-of-india-poses-for-a-portrait-"
-        "prior-to-the-icc-cricket-world-cup.jpg?s=612x612&w=0&k=20&c="
-        "W7wCkhX3gk1tpYJOan6geJBPU8FIJgC0xme5phwPFYo=",
-        "https://media.gettyimages.com/id/1076452406/photo/"
-        "adelaide-australia-virat-kohli-of-india-poses-during-the-india-"
-        "test-squad-portrait-session-on.jpg?s=612x612&w=0&k=20&c="
-        "G3RyNFeBhksZzNMIjlTJMNPCUgpDtFwa8cc5bUG0wms="
-    ]
-
-    test_audio_url = (
-        "https://pub-be0c2eb5ab24406292572a49239fd150.r2.dev/"
-        "3cc75fd2-ffef-4d95-9d69-3b6d86c07ddf.mp3"
-    )
-
-    # Use the provided subtitle URL
-    test_subtitle_url = (
-        "https://pub-be0c2eb5ab24406292572a49239fd150.r2.dev/"
-        "3cc75fd2-ffef-4d95-9d69-3b6d86c07ddf.srt"
-    )
-
-    test_script = (
-        "Virat Kohli, the Indian cricket sensation, made history by "
-        "becoming the first player to score20,000 runs in a decade. "
-        "Known as the Cricketer of the Decade from2011 to2020, Kohli's "
-        "achievements are a testament to his dedication and skill. He "
-        "holds the record for most ODI centuries with50, surpassing "
-        "Sachin Tendulkar. In Test cricket, Kohli captained India to "
-        "their first-ever series win in Australia and led the team to "
-        "the top of the ICC rankings for five consecutive years. As "
-        "Kohli once said, \"You don't have to be great to start, but "
-        "you have to start to be great.\" His legacy continues to "
-        "inspire generations of cricketers, cementing his place as one "
-        "of the greatest batsmen in the sport's history."
-    )
-
-    print("Running test generation...")
+    """Test the optimized video generation"""
+    
+    from test_data import test_image_urls, test_audio_url, test_subtitle_url, test_script
+    
+    test_data = {
+        "image_urls": test_image_urls,
+        "audio_url": test_audio_url,
+        "subtitle_url": test_subtitle_url,
+        "script": test_script,
+        "video_aspect": "9:16",
+        "apply_effects": True
+    }
+    
+    print("Testing optimized video generation...")
+    
+    # Test CPU-only version
     try:
-        result = await generate_video.remote.aio(
-            image_urls=test_image_urls,
-            audio_url=test_audio_url,
-            subtitle_url=test_subtitle_url,
-            script=test_script,
-        )
-        print(f"Test Result: {result}")
-    except Exception as exc:
-        print(f"Test failed: {exc}")
-        print(
-            "Please ensure you have valid 'r2-credentials' in Modal and that "
-            "the audio URL is publicly accessible."
-        )
+        result = await generate_video.remote.aio(**test_data)
+        print(f"CPU Result: {result}")
+    except Exception as e:
+        print(f"CPU test failed: {e}")
