@@ -156,19 +156,10 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
             video_url = modal_result["video_url"]
             thumbnail_url = modal_result["thumbnail_url"]
             
-            # Use ffprobe to get the duration from the remote video URL
-            # This is a simplified approach. For production, you might want a more robust way.
-            proc = await asyncio.create_subprocess_exec(
-                "ffprobe", "-v", "error", "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1", video_url,
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await proc.communicate()
-            if proc.returncode == 0:
-                duration = float(stdout.decode().strip())
-            else:
-                logger.warning(f"Could not probe video duration for {video_url}. Setting to 0.")
-                duration = 0
+            # Get duration from Modal response - Modal already calculates this from audio file
+            duration = modal_result.get("duration", 0)
+            if duration == 0:
+                logger.warning(f"No duration provided by Modal for {video_url}. This is unexpected.")
 
             step_timings["video_composition_modal"] = (datetime.now(timezone.utc) - start_time).total_seconds()
             
