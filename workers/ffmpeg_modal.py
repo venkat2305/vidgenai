@@ -14,6 +14,38 @@ from datetime import datetime
 import time # Import time for accurate timing
 
 
+# ---- Quality Presets ----
+PRESETS = {
+    "low": {
+        "crf": 30,
+        "preset": "fast",
+        "tune": "film",
+        "profile": "baseline",
+        "level": "3.0",
+        "maxrate": "1M",
+        "bufsize": "2M"
+    },
+    "medium": {
+        "crf": 25,
+        "preset": "medium",
+        "tune": "film",
+        "profile": "main",
+        "level": "3.1",
+        "maxrate": "2M",
+        "bufsize": "4M"
+    },
+    "high": {
+        "crf": 18,
+        "preset": "slow",
+        "tune": "film",
+        "profile": "high",
+        "level": "4.0",
+        "maxrate": "5M",
+        "bufsize": "10M"
+    }
+}
+
+
 # ---- 1. Optimized Image with Minimal Dependencies ----
 image = (
     modal.Image.debian_slim()
@@ -145,7 +177,8 @@ class SinglePassVideoGenerator:
         subtitle_path: str,
         output_path: str,
         video_aspect: str = "9:16",
-        apply_effects: bool = True
+        apply_effects: bool = True,
+        quality: str = "low"
     ) -> Tuple[str, float]:
         """Generate video in a single FFmpeg pass"""
         
@@ -203,12 +236,19 @@ class SinglePassVideoGenerator:
         # Map outputs
         cmd.extend(["-map", "[final]", "-map", f"{audio_index}:a"])
         
-        # CPU-only output settings
+        # Get quality preset settings
+        quality_settings = PRESETS.get(quality, PRESETS["low"])
+        
+        # CPU-only output settings with quality preset
         cmd.extend([
             "-c:v", "libx264",
-            "-preset", "fast",  # Better than ultrafast
-            "-crf", "23",       # Good quality
-            "-tune", "film",    # Optimize for video content
+            "-preset", quality_settings["preset"],
+            "-crf", str(quality_settings["crf"]),
+            "-tune", quality_settings["tune"],
+            "-profile:v", quality_settings["profile"],
+            "-level", quality_settings["level"],
+            "-maxrate", quality_settings["maxrate"],
+            "-bufsize", quality_settings["bufsize"],
         ])
         
         # Audio settings
@@ -286,7 +326,8 @@ async def generate_optimized_video(
     subtitle_url: str,
     script: str,
     video_aspect: str = "9:16",
-    apply_effects: bool = True
+    apply_effects: bool = True,
+    quality: str = "low"
 ) -> Dict[str, Any]:
     """Main function to generate video with optimizations"""
     
@@ -366,7 +407,8 @@ async def generate_optimized_video(
                 subtitle_path=subtitle_path,
                 output_path=video_path,
                 video_aspect=video_aspect,
-                apply_effects=apply_effects
+                apply_effects=apply_effects,
+                quality=quality
             )
             end_time = time.time()
             timings["video_generation"] = end_time - start_time
@@ -445,6 +487,7 @@ async def generate_video(
     script: str,
     video_aspect: str = "9:16",
     apply_effects: bool = True,
+    quality: str = "low",
 ):
     """Modal endpoint for video generation"""
     
@@ -457,7 +500,8 @@ async def generate_video(
             subtitle_url=subtitle_url,
             script=script,
             video_aspect=video_aspect,
-            apply_effects=apply_effects
+            apply_effects=apply_effects,
+            quality=quality
         )
         
         logger.info(f"Video generation completed: {result}")
@@ -484,7 +528,8 @@ async def main():
         "subtitle_url": test_subtitle_url,
         "script": test_script,
         "video_aspect": "9:16",
-        "apply_effects": True
+        "apply_effects": True,
+        "quality": "low"
     }
     
     print("Testing optimized video generation...")

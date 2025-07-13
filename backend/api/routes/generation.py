@@ -55,7 +55,7 @@ async def update_video_status(
     )
 
 
-async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", apply_effects: bool = True, use_contextual_images: bool = True):
+async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", apply_effects: bool = True, use_contextual_images: bool = False, quality: str = "low"):
     """Optimized background task with parallel processing"""
     temp_dir_obj = tempfile.TemporaryDirectory()
     temp_dir = temp_dir_obj.name
@@ -148,6 +148,7 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
                 script=script,
                 video_aspect=aspect_ratio,
                 apply_effects=apply_effects,
+                quality=quality,
             )
 
             if not modal_result or not modal_result.get("success"):
@@ -211,7 +212,8 @@ async def create_video_generation(
     background_tasks: BackgroundTasks,
     aspect_ratio: str = Query("9:16", description="Video aspect ratio (9:16, 16:9, 1:1)"),
     apply_effects: bool = Query(True, description="Apply visual effects (zoom/pan) to images"),
-    use_contextual_images: bool = Query(False, description="Use context-aware images that change with the script content")
+    use_contextual_images: bool = Query(False, description="Use context-aware images that change with the script content"),
+    quality: str = Query("low", description="Video quality preset (low, medium, high)")
 ):
     video = VideoModel(
         celebrity_name=video_data.celebrity_name,
@@ -222,7 +224,7 @@ async def create_video_generation(
     videos_collection = mongodb.db.videos
     await videos_collection.insert_one(video.dict())
 
-    background_tasks.add_task(generate_video_background, video.id, aspect_ratio, apply_effects, use_contextual_images)
+    background_tasks.add_task(generate_video_background, video.id, aspect_ratio, apply_effects, use_contextual_images, quality)
 
     return video
 
