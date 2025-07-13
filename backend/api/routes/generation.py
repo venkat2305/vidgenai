@@ -12,7 +12,7 @@ from db.models.video import VideoCreate, VideoModel, VideoStatus
 from services.audio.audio_generator import AudioGenerator
 from services.media.image_fetcher import ImageFetchService
 from services.script.script_generator import ScriptGenerationService
-from services.s3.storage import upload_to_s3
+from services.s3.storage import upload_to_r2
 from services.subtitles.subtitle_generator import SubtitleGenerator
 
 
@@ -118,7 +118,7 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
         upload_start = datetime.now(timezone.utc)
         
         # Start audio upload and subtitle generation simultaneously
-        audio_upload_task = upload_to_s3(audio_path, f"{video_id}.mp3")
+        audio_upload_task = upload_to_r2(audio_path, f"{video_id}.mp3")
         subtitle_task = subtitle_generator.generate(script, audio_path, alignment_data, temp_dir=temp_dir)
         
         # Wait for both to complete
@@ -128,7 +128,7 @@ async def generate_video_background(video_id: str, aspect_ratio: str = "9:16", a
         step_timings["subtitle_generation"] = (datetime.now(timezone.utc) - upload_start).total_seconds()
         
         # Upload subtitles
-        subtitle_url = await upload_to_s3(subtitle_path, f"{video_id}.srt")
+        subtitle_url = await upload_to_r2(subtitle_path, f"{video_id}.srt")
         
         await update_video_status(video_id, VideoStatus.COMPOSING_VIDEO, 80,
                                 audio_url=audio_url, subtitle_url=subtitle_url, step_timings=step_timings)

@@ -47,10 +47,3 @@ async def upload_to_r2(file_path: str, object_key: str) -> str:
         raise Exception(f"Failed to upload {file_path} to R2: {str(e)}")
 
 
-# For backward compatibility
-async def upload_to_s3(file_path: str, s3_key: str) -> str:
-    """
-    Backward compatibility wrapper for upload_to_r2
-    """
-    print(f"Uploading to S3: {file_path} -> {s3_key}")
-    return await upload_to_r2(file_path, s3_key)
