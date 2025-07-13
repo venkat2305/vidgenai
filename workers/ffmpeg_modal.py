@@ -23,7 +23,12 @@ PRESETS = {
         "profile": "baseline",
         "level": "3.0",
         "maxrate": "1M",
-        "bufsize": "2M"
+        "bufsize": "2M",
+        "resolution": {
+            "9:16": (480, 854),   # 480p vertical
+            "16:9": (854, 480),   # 480p horizontal
+            "1:1": (480, 480),    # 480p square
+        }
     },
     "medium": {
         "crf": 25,
@@ -32,7 +37,12 @@ PRESETS = {
         "profile": "main",
         "level": "3.1",
         "maxrate": "2M",
-        "bufsize": "4M"
+        "bufsize": "4M",
+        "resolution": {
+            "9:16": (720, 1280),  # 720p vertical
+            "16:9": (1280, 720),  # 720p horizontal
+            "1:1": (720, 720),    # 720p square
+        }
     },
     "high": {
         "crf": 18,
@@ -41,7 +51,12 @@ PRESETS = {
         "profile": "high",
         "level": "4.0",
         "maxrate": "5M",
-        "bufsize": "10M"
+        "bufsize": "10M",
+        "resolution": {
+            "9:16": (1080, 1920),  # 1080p vertical
+            "16:9": (1920, 1080),  # 1080p horizontal
+            "1:1": (1080, 1080),   # 1080p square
+        }
     }
 }
 
@@ -115,13 +130,10 @@ class SinglePassVideoGenerator:
             raise Exception(f"Command failed: {stderr.decode()}")
         return stdout.decode()
     
-    def _get_video_dimensions(self, aspect_ratio: str) -> Tuple[int, int]:
-        dimensions = {
-            "9:16": (1080, 1920),  # Increased resolution for better quality
-            "16:9": (1920, 1080),
-            "1:1": (1080, 1080),
-        }
-        return dimensions.get(aspect_ratio, (1080, 1920))
+    def _get_video_dimensions(self, aspect_ratio: str, quality: str = "low") -> Tuple[int, int]:
+        quality_preset = PRESETS.get(quality, PRESETS["low"])
+        resolution = quality_preset["resolution"]
+        return resolution.get(aspect_ratio, resolution["9:16"])
     
     def _build_effect_filter(
         self, index: int, duration: float, width: int, height: int, 
@@ -182,7 +194,7 @@ class SinglePassVideoGenerator:
     ) -> Tuple[str, float]:
         """Generate video in a single FFmpeg pass"""
         
-        width, height = self._get_video_dimensions(video_aspect)
+        width, height = self._get_video_dimensions(video_aspect, quality)
         
         # Build FFmpeg command
         cmd = ["ffmpeg", "-y"]
@@ -474,7 +486,7 @@ async def generate_optimized_video(
 # ---- 6. Modal Function ----
 @app.function(
     cpu=8.0,        # More CPU for CPU-only processing
-    memory=4096,    # More memory for CPU processing
+    memory=2048,    # More memory for CPU processing
     retries=0,
     secrets=[modal.Secret.from_name("r2-credentials")],
     timeout=900,
