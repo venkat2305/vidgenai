@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import logging
+from fastapi import Response
 
 from api.routes import video, generation
 from db.mongodb import connect_to_mongo, close_mongo_connection
@@ -19,6 +20,12 @@ app = FastAPI(
     description="AI-Generated Sports Celebrity History Reels",
     version="1.0.0",
 )
+
+
+@app.head("/")
+async def root_head():
+    return Response(status_code=200)
+
 
 # Add CORS middleware
 app.add_middleware(
