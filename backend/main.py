@@ -53,6 +53,12 @@ async def root():
     return {"message": "Welcome to VidGenAI - Sports Celebrity History Reels Generator"}
 
 
+# Health check endpoint for Render
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 # Include routers
 app.include_router(video.router, prefix="/api/videos", tags=["videos"])
 app.include_router(generation.router, prefix="/api/generation", tags=["generation"])
