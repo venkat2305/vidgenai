@@ -12,6 +12,7 @@ import io
 import hashlib
 from datetime import datetime
 import time # Import time for accurate timing
+from pathlib import Path
 
 
 # ---- Quality Presets ----
@@ -143,38 +144,47 @@ class SinglePassVideoGenerator:
         fps = 30
         frames = int(duration * fps)
         
-        # Base scaling and padding
-        base_filter = f"""[{index}:v]
-        scale={width}:{height}:force_original_aspect_ratio=decrease,
-        pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black"""
+        # Base scaling and padding - clean format
+        base_filter = (
+            f"[{index}:v]scale={width}:{height}:"
+            f"force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black"
+        )
         
-        # SAR normalization and pixel format fix
-        post = f",setsar=1,setdar={width}/{height},format=yuv420p"
-        
-        # Add effect based on type
+        # Add effect based on type - zoompan handles duration internally
         if effect_type == "zoom_in":
-            effect = f"""zoompan=z='min(zoom+0.0015,1.3)':
-                       d={frames}:s={width}x{height}:fps={fps}"""
-        elif effect_type == "zoom_out":
-            effect = f"""zoompan=z='if(eq(on,1),1.3,max(1.001,zoom-0.0015))':
-                       d={frames}:s={width}x{height}:fps={fps}"""
-        elif effect_type == "pan_left":
-            effect = f"""zoompan=z='1.2':x='if(gte(on,1),(on-1)*2,0)':
-                       d={frames}:s={width}x{height}:fps={fps}"""
-        elif effect_type == "pan_right":
-            # pan from right edge toward the left by 2 px per frame
             effect = (
-                "zoompan="
-                "z='1.2':"
-                "x='if(gte(on,1),iw-ow-(on-1)*2,iw-ow)':"
+                f"zoompan=z='min(zoom+0.0015,1.3)':"
+                f"d={frames}:s={width}x{height}:fps={fps}"
+            )
+        elif effect_type == "zoom_out":
+            effect = (
+                f"zoompan=z='if(eq(on,1),1.3,max(1.001,zoom-0.0015))':"
+                f"d={frames}:s={width}x{height}:fps={fps}"
+            )
+        elif effect_type == "pan_left":
+            effect = (
+                f"zoompan=z='1.2':x='if(gte(on,1),(on-1)*2,0)':"
+                f"d={frames}:s={width}x{height}:fps={fps}"
+            )
+        elif effect_type == "pan_right":
+            effect = (
+                f"zoompan=z='1.2':"
+                f"x='if(gte(on,1),iw-ow-(on-1)*2,iw-ow)':"
                 f"d={frames}:s={width}x{height}:fps={fps}"
             )
         else:  # ken_burns - combination
-            effect = f"""zoompan=z='min(zoom+0.001,1.2)':
-                       x='if(gte(zoom,1.2),x+1,x)':y='if(gte(zoom,1.2),y+1,y)':
-                       d={frames}:s={width}x{height}:fps={fps}"""
+            effect = (
+                f"zoompan=z='min(zoom+0.001,1.2)':"
+                f"x='if(gte(zoom,1.2),x+1,x)':y='if(gte(zoom,1.2),y+1,y)':"
+                f"d={frames}:s={width}x{height}:fps={fps}"
+            )
         
-        return f"{base_filter},{effect}{post},setpts=PTS-STARTPTS[v{index}]"
+        # SAR normalization and pixel format fix
+        post_filter = f"setsar=1,setdar={width}/{height},format=yuv420p"
+        
+        # Combine all parts and set PTS
+        return f"{base_filter},{effect},{post_filter},setpts=PTS-STARTPTS[v{index}]"
     
     def _get_random_effect(self) -> str:
         """Get a random effect type"""
@@ -196,13 +206,16 @@ class SinglePassVideoGenerator:
         
         width, height = self._get_video_dimensions(video_aspect, quality)
         
+        print(f"Processing {len(image_paths)} images with durations: {durations}")
+        
         # Build FFmpeg command
         cmd = ["ffmpeg", "-y"]
         
-        # Add inputs
+        # Add inputs WITHOUT loop flags - let filters handle duration
         filter_parts = []
         for i, (img_path, duration) in enumerate(zip(image_paths, durations)):
-            cmd.extend(["-loop", "1", "-t", str(duration), "-i", img_path])
+            cmd.extend(["-i", img_path])  # Remove -loop 1 -t duration flags
+            print(f"Added input {i}: {img_path} for {duration}s")
             
             # Build filter for this image
             if apply_effects:
@@ -213,12 +226,16 @@ class SinglePassVideoGenerator:
                     )
                 )
             else:
-                # Simple scale and pad
-                filter_parts.append(f"""[{i}:v]
-                    scale={width}:{height}:force_original_aspect_ratio=decrease,
-                    pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,
-                    fps=30,setsar=1,setdar={width}/{height},format=yuv420p,
-                    setpts=PTS-STARTPTS[v{i}]""")
+                # Simple scale and pad with duration
+                fps = 30
+                frames = int(duration * fps)
+                filter_parts.append(
+                    f"[{i}:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
+                    f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,"
+                    f"loop=loop={frames}:size=1:start=0,"
+                    f"fps=30,setsar=1,setdar={width}/{height},format=yuv420p,"
+                    f"setpts=PTS-STARTPTS[v{i}]"
+                )
         
         # Add audio input
         audio_index = len(image_paths)
@@ -229,6 +246,7 @@ class SinglePassVideoGenerator:
         concat_filter = (
             f"{concat_inputs}concat=n={len(image_paths)}:v=1:a=0[outv]"
         )
+        print(f"Concatenating {len(image_paths)} video segments")
         
         # Add subtitles
         subtitle_filter = (
@@ -241,6 +259,8 @@ class SinglePassVideoGenerator:
         filter_complex = ";".join(
             filter_parts + [concat_filter, subtitle_filter]
         )
+        
+        print("Filter complex:", filter_complex[:200] + "..." if len(filter_complex) > 200 else filter_complex)
         
         # Add filter complex to command
         cmd.extend(["-filter_complex", filter_complex])
@@ -272,7 +292,9 @@ class SinglePassVideoGenerator:
             output_path
         ])
         
-        print("Running FFmpeg command")
+        print("Running FFmpeg command with", len(cmd), "arguments")
+        print("Command preview:", " ".join(cmd[:10]) + "...")
+        
         # Run the command
         start_time = asyncio.get_event_loop().time()
         await self._run_command(cmd)
@@ -396,6 +418,7 @@ async def generate_optimized_video(
             # Preprocess images
             start_time = time.time()
             image_paths = await preprocess_images(image_urls, temp_dir)
+            print("image_paths", image_paths)
             end_time = time.time()
             timings["image_preprocessing"] = end_time - start_time
             print("Preprocessed images")
@@ -527,13 +550,49 @@ async def generate_video(
         }
 
 
-# ---- 7. Test Entrypoint ----
-@app.local_entrypoint()
-async def main():
-    """Test the optimized video generation"""
+# ---- 7. Load Environment Variables ----
+def load_env_file():
+    """Load environment variables from .env file"""
+    # Look for .env file in backend directory
+    env_path = Path(__file__).parent.parent / "backend" / ".env"
     
+    if env_path.exists():
+        print(f"Loading environment variables from {env_path}")
+        with open(env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    # Remove quotes if present
+                    value = value.strip('"\'')
+                    os.environ[key] = value
+        print("Environment variables loaded successfully")
+    else:
+        print(f"No .env file found at {env_path}")
+
+
+# ---- 8. Test Entrypoint ----
+async def run_local():
+    """Test the optimized video generation locally"""
     from test_data import test_image_urls, test_audio_url, test_subtitle_url, test_script
+
+    # Load environment variables from .env file
+    load_env_file()
+
+    # Check for necessary environment variables
+    required_env_vars = [
+        "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME",
+        "R2_ENDPOINT_URL", "R2_PUBLIC_URL_BASE"
+    ]
     
+    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+    if missing_vars:
+        print("Error: Missing the following R2 environment variables:")
+        for var in missing_vars:
+            print(f"  - {var}")
+        print("\nPlease ensure these are set in backend/.env file")
+        return
+
     test_data = {
         "image_urls": test_image_urls,
         "audio_url": test_audio_url,
@@ -543,12 +602,19 @@ async def main():
         "apply_effects": True,
         "quality": "low"
     }
-    
-    print("Testing optimized video generation...")
-    
-    # Test CPU-only version
+
+    print("Testing optimized video generation locally...")
+
     try:
-        result = await generate_video.remote.aio(**test_data)
-        print(f"CPU Result: {result}")
+        # We call generate_optimized_video directly, bypassing the modal-specific wrapper
+        result = await generate_optimized_video(**test_data)
+        print(f"Local Result: {result}")
     except Exception as e:
-        print(f"CPU test failed: {e}")
+        print(f"Local test failed: {e}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    # This allows running the script directly with `python workers/ffmpeg_modal.py`
+    # Make sure to set your R2 environment variables before running.
+    asyncio.run(run_local())
