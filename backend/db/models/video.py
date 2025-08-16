@@ -36,7 +36,7 @@ class VideoModel(BaseModel):
     step_timings: dict = Field(default_factory=dict)
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "id": "550e8400-e29b-41d4-a716-446655440000",
                 "title": "Michael Jordan's Rise to Fame",
@@ -57,9 +57,9 @@ class VideoCreate(BaseModel):
     celebrity_name: str
     title: Optional[str] = None
     description: Optional[str] = None
-    
+
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "celebrity_name": "Michael Jordan",
                 "title": "Michael Jordan's Rise to Fame",
