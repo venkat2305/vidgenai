@@ -20,7 +20,7 @@ class VideoStatus(str, Enum):
 class VideoModel(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     title: str
-    celebrity_name: str
+    celebrity_name: Optional[str] = None
     description: Optional[str] = None
     status: VideoStatus = VideoStatus.PENDING
     progress: int = 0  # 0-100%
