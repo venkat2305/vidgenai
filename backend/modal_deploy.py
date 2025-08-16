@@ -1,17 +1,23 @@
 import modal
-from main import app as fastapi_app_instance
 
-# Initialize Modal App
-app = modal.App("vidgenai-app")  # This must be named 'app' for modal serve to pick it up by default
+image = modal.Image.from_dockerfile("Dockerfile")
 
-# Define container image
-image = modal.Image.debian_slim().pip_install_from_requirements("requirements.txt")
+app = modal.App("vidgenai-backend-docker", image=image)
 
+# Modal will inject them as environment variables.
+secrets = [modal.Secret.from_name("vidgenai-secrets")]
+
+
+# Keep one warm container to cut cold-starts; scale down after 5 minutes of idle.
 @app.function(
-    image=image,
-    secrets=[modal.Secret.from_name("vidgenai-env")]
+    region="ap-south-1",
+    cpu=1.0,
+    memory=1024,
+    secrets=secrets,
+    scaledown_window=200
 )
-@modal.concurrent(max_inputs=50)
-@modal.asgi_app()
+@modal.asgi_app()              # use this for full FastAPI apps with many routes
 def fastapi_app():
-    return fastapi_app_instance
+    # All imports here run inside the container
+    from main import app as application
+    return application
